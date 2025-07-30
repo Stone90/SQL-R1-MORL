@@ -132,7 +132,7 @@ pip install torch==2.4.0 --index-url https://download.pytorch.org/whl/cu121
 pip install vllm==0.6.3 ray
 pip install flash-attn --no-build-isolation
 pip install -e .  # For verl integration
-pip install wandb IPython matplotlib sqlparse func_timeout
+pip install wandb IPython matplotlib sqlparse func_timeout nltk ijson
 ```
 
 4. Download the model weights from HuggingFace and put them in the `models/` directory. 

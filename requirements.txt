@@ -4,7 +4,9 @@ datasets
 dill
 flash-attn
 hydra-core
+ijson
 numpy
+nltk
 pandas
 pybind11
 ray
