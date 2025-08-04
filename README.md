@@ -69,7 +69,7 @@ Figure 1: Demonstration of our work.
 
 ## 🚀 Coming Soon Checklist
 
-- [x] 📊 Release model weights on HuggingFace
+- [x] 📊 Release model weights on HuggingFace and ModelScope
 - [x] 🔧 Open source training code and RL dataset
 - [x] 📝 Detailed documentation
 - [x] 🛠️ Environment setup guide
@@ -79,11 +79,11 @@ Figure 1: Demonstration of our work.
 
 We are excited to release our SQL-R1 model weights! You can find them on HuggingFace:
 
-| Model  | Size | Link |
-|-------------|-------------|------|
-| SQL-R1 (3B) | 3B | [🤗 Download](https://huggingface.co/MPX0222forHF/SQL-R1-3B) |
-| SQL-R1 (7B) | 7B | [🤗 Download](https://huggingface.co/MPX0222forHF/SQL-R1-7B) |
-| SQL-R1 (14B) | 14B | [🤗 Download](https://huggingface.co/MPX0222forHF/SQL-R1-14B) |
+| Model  | Size | HuggingFace Link | ModelScope Link |
+|-------------|-------------|------|------|
+| SQL-R1 (3B) | 3B | [🤗 Download](https://huggingface.co/MPX0222forHF/SQL-R1-3B) | - |
+| SQL-R1 (7B) | 7B | [🤗 Download](https://huggingface.co/MPX0222forHF/SQL-R1-7B) | [🤖 Download](https://www.modelscope.cn/models/MPX0222/SQL-R1-7B) |
+| SQL-R1 (14B) | 14B | [🤗 Download](https://huggingface.co/MPX0222forHF/SQL-R1-14B) | - |
 
 
 ## 📑 Documentation Structure
