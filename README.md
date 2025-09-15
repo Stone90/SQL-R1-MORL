@@ -21,12 +21,12 @@
 </div>
 
 <div align="center" style="display: flex; gap: 5px; justify-content: center;">
-<a href="https://dataarctech.github.io/SQL-R1/"><img src="https://img.shields.io/badge/🏠_Homepage-SQL--R1-00A98F?style=flat-square"/></a>
-<a href="https://arxiv.org/abs/2504.08600"><img src="https://img.shields.io/badge/arXiv-2504.08600-red?style=flat-square&logo=arxiv"/></a>
-<a href="https://github.com/MPX0222/SQL-R1"><img src="https://img.shields.io/badge/GitHub-SQL--R1-2F80ED?style=flat-square&logo=github"/></a>
-<a href="https://huggingface.co/MPX0222forHF/SQL-R1-7B"><img src="https://img.shields.io/badge/🤗_HuggingFace-SQL--R1-FF9D00?style=flat-square"/></a>
-<a href="https://www.modelscope.cn/models/MPX0222/SQL-R1-7B"><img src="https://img.shields.io/badge/🤖_ModelScope-SQL--R1-36CED0?style=flat-square"/></a>
-<a href="https://github.com/MPX0222/SQL-R1/stargazers"><img src="https://img.shields.io/github/stars/MPX0222/SQL-R1?style=flat-square&color=946CE6"/></a>
+<a href="https://dataarctech.github.io/SQL-R1/"><img src="https://img.shields.io/badge/🏠_Homepage-blue?style=for-the-badge"/></a>
+<a href="https://arxiv.org/abs/2504.08600"><img src="https://img.shields.io/badge/arXiv-red?style=for-the-badge&logo=arxiv"/></a>
+<a href="https://github.com/MPX0222/SQL-R1"><img src="https://img.shields.io/badge/GitHub-black?style=for-the-badge&logo=github"/></a>
+<a href="https://huggingface.co/MPX0222forHF/SQL-R1-7B"><img src="https://img.shields.io/badge/HuggingFace-FF9D00?style=for-the-badge&logo=huggingface"/></a>
+<a href="https://www.modelscope.cn/models/MPX0222/SQL-R1-7B"><img src="https://img.shields.io/badge/🤖_ModelScope-946CE6?style=for-the-badge"/></a>
+<a href="https://github.com/MPX0222/SQL-R1/stargazers"><img src="https://img.shields.io/github/stars/MPX0222/SQL-R1?style=for-the-badge&color=white"/></a>
 </div>
 <br>
 
