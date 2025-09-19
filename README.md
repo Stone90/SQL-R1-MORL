@@ -32,7 +32,7 @@
 
 <div align="center" style="display: flex; gap: 5px; justify-content: center;">
   <p>
-  <b>🚧  Our work is accepted by NeurIPS 2025. Welcome to star and cite our work! ✨</b> 
+  <b>🔥  Our work is accepted by NeurIPS 2025. Welcome to star and cite our work! ✨</b> 
   </p>
 </div>
 
@@ -187,3 +187,8 @@ This may be added in the future work. If you have any ideas, please feel free to
 ## Thanks for
 
 We thank [OmniSQL](https://github.com/RUCKBReasoning/OmniSQL) and follow their evaluation code and database information retrieval code. We have adapted and modified their evaluation scripts for our project.
+
+## Star History
+
+[![Star History Chart](https://api.star-history.com/svg?repos=MPX0222/SQL-R1&type=Date)](https://www.star-history.com/#MPX0222/SQL-R1&Date)
+
