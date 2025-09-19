@@ -133,5 +133,124 @@ body {
   font-size: smaller;
 }
 
+/* Method and Experiment Section Styles */
+.method-content, .experiment-content {
+  font-size: 1.1rem;
+  line-height: 1.7;
+}
+
+.method-subsection, .experiment-subsection {
+  border-left: 3px solid #3273dc;
+  padding-left: 1.5rem;
+  margin-bottom: 2rem;
+}
+
+.method-subsection h3, .experiment-subsection h3 {
+  color: #3273dc;
+  margin-bottom: 1rem;
+}
+
+.method-figures, .experiment-figures {
+  margin: 2rem 0;
+}
+
+.method-figures img, .experiment-results img {
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+  transition: transform 0.3s ease;
+}
+
+.method-figures img:hover, .experiment-results img:hover {
+  transform: scale(1.02);
+}
+
+/* Table styling for experiments */
+.experiment-content .table {
+  background-color: white;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.experiment-content .table th {
+  background-color: #f5f5f5 !important;
+  color: #363636;
+  font-weight: 600;
+  border-bottom: 2px solid #dbdbdb;
+}
+
+.experiment-content .table td {
+  vertical-align: middle;
+}
+
+/* Mathematical formula styling */
+.MathJax {
+  font-size: 1.1em !important;
+}
+
+/* Figure caption styling */
+.has-text-grey {
+  font-style: italic;
+}
+
+/* Header Logos Section Styles */
+.header-logos {
+  background: #ffffff;
+  border-bottom: 1px solid #f0f0f0;
+}
+
+.logo-container {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  /* padding: 0.5rem 1rem; */
+}
+
+.conference-logo {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.institution-logos {
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.institution-logo .logo-placeholder {
+  font-size: 1rem;
+}
+
+/* Responsive design for logos */
+@media screen and (max-width: 768px) {
+  .header-logos .columns {
+    flex-direction: column;
+  }
+  
+  .logo-separator {
+    display: none !important;
+  }
+  
+  .institution-logo .logo-placeholder,
+  .conference-logo .logo-placeholder {
+    font-size: 0.8rem;
+  }
+}
+
+@media screen and (max-width: 480px) {
+  .institution-logos {
+    flex-direction: column;
+  }
+}
+
+/* Responsive adjustments */
+@media screen and (max-width: 768px) {
+  .method-subsection, .experiment-subsection {
+    padding-left: 1rem;
+    border-left-width: 2px;
+  }
+  
+  .method-content, .experiment-content {
+    font-size: 1rem;
+  }
+}
+
 
 

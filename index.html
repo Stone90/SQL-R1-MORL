@@ -53,9 +53,60 @@
   <script src="static/js/bulma-carousel.min.js"></script>
   <script src="static/js/bulma-slider.min.js"></script>
   <script src="static/js/index.js"></script>
+  <!-- MathJax for mathematical formulas -->
+  <script src="https://polyfill.io/v3/polyfill.min.js?features=es6"></script>
+  <script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+  <script>
+    window.MathJax = {
+      tex: {
+        inlineMath: [['$', '$'], ['\\(', '\\)']],
+        displayMath: [['$$', '$$'], ['\\[', '\\]']]
+      }
+    };
+  </script>
 </head>
 <body>
 
+  <!-- Header with Conference and Institution Logos -->
+  <section class="header-logos">
+    <div class="container is-max-desktop">
+      <div class="columns is-centered is-vcentered">
+        <div class="column is-narrow">
+          <div class="logo-container">
+            <!-- Conference Logo (NeurIPS 2025) -->
+            <div class="conference-logo">
+              <img src="static/images/NeurIPS-logo.svg" alt="NeurIPS 2025" style="height: 60px;"/>
+            </div>
+          </div>
+        </div>
+        <div class="column is-narrow">
+          <div class="logo-separator" style="width: 1px; height: 40px; background-color: #dbdbdb; margin: 0 2rem;"></div>
+        </div>
+        <div class="column is-narrow">
+          <div class="logo-container">
+            <!-- Institution Logos -->
+            <div class="institution-logos" style="display: flex; align-items: center;">
+              <!-- IDEA Research Logo -->
+              <div class="institution-logo">
+                <img src="static/images/idea_logo.png" alt="IDEA Research" style="height: 80px;"/>
+              </div>
+              <!-- HKUST(GZ) Logo -->
+              <div class="institution-logo">
+                <img src="static/images/hkust_logo.png" alt="HKUST(GZ)" style="height: 90px;"/>
+              </div>
+              <div class="institution-logo">
+                <img src="static/images/ucas_logo.png" alt="UCAS" style="height: 55px; padding-left: 10px;"/>
+              </div>
+              <!-- Other institutions can be added here -->
+              <div class="institution-logo">
+                <img src="static/images/dataarc_logo.png" alt="DataArc" style="height: 80px; padding-left: 30px;"/>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
 
   <section class="hero">
     <div class="hero-body">
@@ -81,10 +132,10 @@
 
             <div class="is-size-5 publication-authors">
               <span class="author-block">
-                <sup>1</sup>IDEA Research, International Digital Economy Academy<br>
-                <sup>2</sup>The Hong Kong University of Science and Technology (Guangzhou)<br>
-                <sup>3</sup>University of Chinese Academy of Science<br>
-                <sup>4</sup>DataArc Tech Ltd.<br>
+                <sup>1</sup>IDEA Research, International Digital Economy Academy, 
+                <sup>2</sup>The Hong Kong University of Science and Technology (Guangzhou), 
+                <sup>3</sup>University of Chinese Academy of Science, 
+                <sup>4</sup>DataArc Tech Ltd.
               </span>
               <!-- <span class="eql-cntrb"><small><br><sup>*</sup>Indicates Equal Contribution</small></span> -->
             </div>
@@ -120,6 +171,16 @@
                     <span>arXiv</span>
                   </a>
                 </span>
+
+                                 <span class="link-block">
+                   <a href="https://huggingface.co/MPX0222forHF/SQL-R1-7B" target="_blank"
+                   class="external-link button is-normal is-rounded is-dark">
+                     <span class="icon">
+                       🤗
+                     </span>
+                     <span>HuggingFace</span>
+                   </a>
+                 </span>
               </div>
             </div>
           </div>
@@ -137,7 +198,7 @@
         <h2 class="title is-3">Introduction</h2>
         <div class="content has-text-justified">
           <p>
-            Natural Language to SQL (NL2SQL) enables intuitive interactions with databases by transforming natural language queries into structured SQL statements. Despite recent advancements in enhancing human-computer interaction within database applications, significant challenges persist, particularly regarding the inference performance in complex scenarios involving multi-table joins and nested queries.
+            Natural Language to SQL (NL2SQL, or Text2SQL) converts natural language questions~(NL) into structured SQL statements, simplifying database interaction without requiring database expertise. Recent advancements in NL2SQL have significantly enhanced the level of human-computer interaction within database query applications and contribute to a wide range of data science analysis tasks. Current NL2SQL models mainly focus on optimizing workflows and their components, such as schema linking, content retrieval, generation correction.
           </p>
           <p>
             Current methodologies primarily utilize supervised fine-tuning (SFT) to train the NL2SQL model, which may limit adaptability and interpretability in new environments (e.g., finance and healthcare). In order to enhance the reasoning performance of the NL2SQL model in the above complex situations, we introduce SQL-R1, a novel NL2SQL reasoning model trained by the reinforcement learning (RL) algorithms.
@@ -153,18 +214,108 @@
   </div>
 </section>
 
+<!-- Method Section -->
+<section class="section" style="background-color: #fafafa;">
+  <div class="container is-max-desktop">
+    <div class="columns is-centered has-text-centered">
+      <div class="column is-four-fifths">
+        <h2 class="title is-3">Method</h2>
+        <div class="content has-text-justified">
+          <!-- Method content will be added here -->
+          <div class="method-content">
+            <p>
+              <em>Method section content will be added here. This section supports mathematical formulas using MathJax notation.</em>
+            </p>
+            
+            <!-- Example of mathematical formula support -->
+            <div class="has-text-centered" style="margin: 2rem 0;">
+              <p><strong>Example formula:</strong></p>
+              <p>$$\mathcal{L}_{RL} = \mathbb{E}_{(s,a) \sim \pi_\theta}[r(s,a) \cdot \log \pi_\theta(a|s)]$$</p>
+            </div>
+            
+            <!-- Placeholder for method figures -->
+            <div class="columns is-centered has-text-centered method-figures">
+              <div class="column">
+                <!-- <img src="images/method_figure1.png" alt="Method Overview" style="width: 100%; height: auto; border: 1px solid #ddd; border-radius: 6px;"/> -->
+                <div style="background: #f5f5f5; border: 2px dashed #ccc; padding: 3rem; border-radius: 6px;">
+                  <p style="color: #888; font-style: italic;">Method Figure Placeholder</p>
+                  <p style="color: #888; font-size: 0.9rem;">Add your method diagrams here</p>
+                </div>
+              </div>
+            </div>
+            
+            <!-- Support for multiple subsections -->
+            <div class="method-subsection" style="margin-top: 2rem;">
+              <h3 class="title is-4">Reinforcement Learning Framework</h3>
+              <p><em>Subsection content goes here...</em></p>
+            </div>
+            
+            <div class="method-subsection" style="margin-top: 2rem;">
+              <h3 class="title is-4">Reward Function Design</h3>
+              <p><em>Subsection content goes here...</em></p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
 <!-- Experiment Section -->
 <section class="section">
   <div class="container is-max-desktop">
     <div class="columns is-centered has-text-centered">
       <div class="column is-four-fifths">
         <h2 class="title is-3">Experiments</h2>
-      <div class="columns is-centered has-text-centered">
-        <div class="column">
-          <img src="images/table1.png" alt="Experiment Results" style="width: 100%; height: auto;"/>
+        <div class="content has-text-justified">
+          <!-- Experiment content will be added here -->
+          <div class="experiment-content">
+            <p>
+              <em>Experiment section content will be added here. This section supports tables, figures, and detailed experimental results.</em>
+            </p>
+            
+            <!-- Main Results Subsection -->
+            <div class="experiment-subsection" style="margin-top: 2rem;">
+              <h3 class="title is-4">Main Results</h3>
+              <p><em>Main experimental results description goes here...</em></p>
+              
+              <!-- Results table/figure container -->
+              <div class="columns is-centered has-text-centered experiment-results">
+                <div class="column">
+                  <img src="images/table1.png" alt="Experiment Results" style="width: 100%; height: auto; border: 1px solid #ddd; border-radius: 6px;"/>
+                  <p class="has-text-grey" style="margin-top: 0.5rem; font-size: 0.9rem;">
+                    <strong>Table 1:</strong> Performance comparison on benchmark datasets
+                  </p>
+                </div>
+              </div>
+            </div>
+            
+            <!-- Ablation Study Subsection -->
+            <div class="experiment-subsection" style="margin-top: 2rem;">
+              <h3 class="title is-4">Ablation Study</h3>
+              <p><em>Ablation study results and analysis go here...</em></p>
+              
+              <!-- Placeholder for additional figures -->
+              <div class="columns is-multiline experiment-figures">
+                <div class="column is-half">
+                  <div style="background: #f9f9f9; border: 2px dashed #ddd; padding: 2rem; border-radius: 6px;">
+                    <p style="color: #888; font-style: italic;">Ablation Figure 1</p>
+                    <p style="color: #888; font-size: 0.9rem;">Component analysis results</p>
+                  </div>
+                </div>
+                <div class="column is-half">
+                  <div style="background: #f9f9f9; border: 2px dashed #ddd; padding: 2rem; border-radius: 6px;">
+                    <p style="color: #888; font-style: italic;">Ablation Figure 2</p>
+                    <p style="color: #888; font-size: 0.9rem;">Performance breakdown</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+            
+          </div>
         </div>
-  </div>
-
+      </div>
+    </div>
   </div>
 </section>
 

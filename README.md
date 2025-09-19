@@ -70,6 +70,7 @@ Figure 1: Demonstration of our work.
 
 ## 🚀 Coming Soon Checklist
 
+- [ ] 📝 Update the camera-ready version of the paper, homepage and poster. coming sooooon!
 - [x] 📊 Release model weights on HuggingFace and ModelScope
 - [x] 🔧 Open source training code and RL dataset
 - [x] 📝 Detailed documentation
