@@ -2,6 +2,11 @@ body {
   font-family: 'Noto Sans', sans-serif;
 }
 
+/* 设置页面容器最大宽度为 1400px */
+.container.is-max-desktop {
+  max-width: 1150px;
+}
+
 
 .footer .icon-link {
     font-size: 25px;

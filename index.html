@@ -76,7 +76,7 @@
           <div class="logo-container">
             <!-- Conference Logo (NeurIPS 2025) -->
             <div class="conference-logo">
-              <img src="static/images/NeurIPS-logo.svg" alt="NeurIPS 2025" style="height: 60px;"/>
+              <img src="static/images/NeurIPS-logo.svg" alt="NeurIPS 2025" style="height: 80px;"/>
             </div>
           </div>
         </div>
@@ -133,9 +133,9 @@
 
             <div class="is-size-5 publication-authors">
               <span class="author-block">
-                <sup>1</sup>IDEA Research, International Digital Economy Academy, 
-                <sup>2</sup>The Hong Kong University of Science and Technology (Guangzhou), 
-                <sup>3</sup>University of Chinese Academy of Science, 
+                <sup>1</sup>IDEA Research, International Digital Economy Academy, <br>
+                <sup>2</sup>The Hong Kong University of Science and Technology (Guangzhou), <br>
+                <sup>3</sup>University of Chinese Academy of Science, <br>
                 <sup>4</sup>DataArc Tech Ltd.
               </span>
               <!-- <span class="eql-cntrb"><small><br><sup>*</sup>Indicates Equal Contribution</small></span> -->
@@ -149,7 +149,7 @@
                   <a href="https://arxiv.org/pdf/2504.08600.pdf" target="_blank"
                   class="external-link button is-normal is-rounded is-dark">
                     <span class="icon">
-                      <i class="fas fa-file-pdf"></i>
+                      <i class="ai ai-arxiv"></i>
                     </span>
                     <span>Paper</span>
                   </a>
@@ -157,25 +157,14 @@
 
                 <span class="link-block">
                   <a href="https://github.com/MPX0222/SQL-R1" target="_blank"
-                  class="external-link button is-normal is-rounded is-dark">
+                  class="external-ink button is-normal is-rounded is-dark">
                     <span class="icon">
                       <i class="fab fa-github"></i>
                     </span>
                     <span>Code</span>
                   </a>
                 </span>
-
                 <span class="link-block">
-                  <a href="https://arxiv.org/abs/2504.08600" target="_blank"
-                  class="external-link button is-normal is-rounded is-dark">
-                    <span class="icon">
-                      <i class="ai ai-arxiv"></i>
-                    </span>
-                    <span>arXiv</span>
-                  </a>
-                </span>
-
-                                 <span class="link-block">
                    <a href="https://huggingface.co/MPX0222forHF/SQL-R1-7B" target="_blank"
                    class="external-link button is-normal is-rounded is-dark">
                      <span class="icon">
@@ -183,7 +172,16 @@
                      </span>
                      <span>HuggingFace</span>
                    </a>
-                 </span>
+                </span>
+                <span class="link-block">
+                  <a href="https://modelscope.cn/models/MPX0222/SQL-R1-7B" target="_blank"
+                  class="external-link button is-normal is-rounded is-dark">
+                    <span class="icon">
+                      🤖
+                    </span>
+                    <span>ModelScope</span>
+                  </a>
+                </span>
               </div>
             </div>
           </div>
@@ -201,16 +199,27 @@
     <div class="columns is-centered has-text-centered">
       <div class="column is-four-fifths">
         <h2 class="title is-3">Introduction</h2>
-        <div class="content has-text-justified">
-          <p>
-            Natural Language to SQL (NL2SQL, or Text2SQL) converts natural language questions~(NL) into structured SQL statements, simplifying database interaction without requiring database expertise. Recent advancements in NL2SQL have significantly enhanced the level of human-computer interaction within database query applications and contribute to a wide range of data science analysis tasks. Current NL2SQL models mainly focus on optimizing workflows and their components, such as schema linking, content retrieval, generation correction.
+        <div class="content has-text-justified" style="line-height: 1.7; color: #2c3e50;">
+          <p style="margin-bottom: 1.5rem;">
+            Natural Language to SQL (NL2SQL) enables intuitive interactions with databases by transforming natural language queries into structured SQL statements. Recent advancements in NL2SQL have significantly enhanced the level of human-computer interaction within database query applications and contribute to a wide range of data science analysis tasks. Current NL2SQL models mainly focus on optimizing workflows and their components, such as <em>schema linking</em>, <em>content retrieval</em>, and <em>generation correction</em>.
           </p>
-          <p>
-            Current methodologies primarily utilize supervised fine-tuning (SFT) to train the NL2SQL model, which may limit adaptability and interpretability in new environments (e.g., finance and healthcare). In order to enhance the reasoning performance of the NL2SQL model in the above complex situations, we introduce SQL-R1, a novel NL2SQL reasoning model trained by the reinforcement learning (RL) algorithms.
+          <p style="margin-bottom: 1.5rem;">
+            Despite these advancements, <strong style="color: #3273dc;">significant challenges persist</strong>, particularly regarding the inference performance in complex scenarios involving multi-table joins and nested queries. Current methodologies primarily utilize supervised fine-tuning (SFT) to train NL2SQL models, which may limit adaptability and interpretability in new environments (e.g., finance and healthcare). 
           </p>
-          <div class="columns is-centered has-text-centered">
+          <p style="margin-bottom: 1.5rem;">
+            In order to enhance the reasoning performance of NL2SQL models in complex situations, we introduce <strong style="color: #3273dc;">SQL-R1</strong>, a novel NL2SQL reasoning model trained by reinforcement learning (RL) algorithms. We design a specialized RL-based reward function tailored for NL2SQL tasks and discuss the impact of cold start on the effectiveness of intensive training. Additionally, we achieve competitive accuracy using only a tiny amount of synthetic NL2SQL data for augmented training and further explore data engineering for RL.
+          </p>
+          <div style="background: linear-gradient(135deg, #667eea15 0%, #764ba215 100%); border-left: 4px solid #3273dc; padding: 1.5rem; margin: 2rem 0; border-radius: 6px;">
+            <p style="margin-bottom: 0; color: #2c3e50;">
+              <strong>Key Results:</strong> SQL-R1 achieves execution accuracy of <strong style="color: #3273dc;">88.6%</strong> on the Spider benchmark and <strong style="color: #3273dc;">67.1%</strong> on the BIRD benchmark, demonstrating state-of-the-art performance in natural language to SQL translation tasks.
+            </p>
+          </div>
+          <div class="columns is-centered has-text-centered" style="margin-top: 2.5rem;">
             <div class="column">
-              <img src="images/overview.png" alt="SQL-R1 Overview" style="width: 100%; height: auto;"/>
+              <img src="images/overview.png" alt="SQL-R1 Overview" style="width: 100%; height: auto; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.1);"/>
+              <p class="has-text-grey" style="margin-top: 1.2rem; font-size: 0.95rem; font-style: italic;">
+                <strong>Figure 1:</strong> Overview of SQL-R1 training framework using reinforcement learning for NL2SQL tasks.
+              </p>
             </div>
           </div>
         </div>
@@ -226,38 +235,84 @@
       <div class="column is-four-fifths">
         <h2 class="title is-3">Method</h2>
         <div class="content has-text-justified">
-          <!-- Method content will be added here -->
           <div class="method-content">
             <p>
-              <em>Method section content will be added here. This section supports mathematical formulas using MathJax notation.</em>
+              This section introduces two forms of training NL2SQL models via RL algorithms: direct reinforcement training and reinforcement training via cold start after SFT. Cold start refers to using specific data to train the base model by SFT first so that it has a particular ability to think and follow instructions. In addition, due to the limited real data, we use the latest synthetic data to support the training process.
             </p>
             
-            <!-- Example of mathematical formula support -->
-            <div class="has-text-centered" style="margin: 2rem 0;">
-              <p><strong>Example formula:</strong></p>
-              <p>$$\mathcal{L}_{RL} = \mathbb{E}_{(s,a) \sim \pi_\theta}[r(s,a) \cdot \log \pi_\theta(a|s)]$$</p>
-            </div>
-            
-            <!-- Placeholder for method figures -->
-            <div class="columns is-centered has-text-centered method-figures">
-              <div class="column">
-                <!-- <img src="images/method_figure1.png" alt="Method Overview" style="width: 100%; height: auto; border: 1px solid #ddd; border-radius: 6px;"/> -->
-                <div style="background: #f5f5f5; border: 2px dashed #ccc; padding: 3rem; border-radius: 6px;">
-                  <p style="color: #888; font-style: italic;">Method Figure Placeholder</p>
-                  <p style="color: #888; font-size: 0.9rem;">Add your method diagrams here</p>
-                </div>
-              </div>
-            </div>
-            
-            <!-- Support for multiple subsections -->
+            <!-- Data Preparation -->
             <div class="method-subsection" style="margin-top: 2rem;">
-              <h3 class="title is-4">Reinforcement Learning Framework</h3>
-              <p><em>Subsection content goes here...</em></p>
+              <h3 class="title is-4">Data Preparation</h3>
+              <p>
+                We utilize the SynSQL-2.5M dataset as our primary data source, which is the first million-scale synthetic NL2SQL dataset, encompassing over 2.5 million diverse and high-quality data samples. The dataset features more than 16,000 synthetic databases across various domains, ensuring extensive coverage of realistic scenarios.
+              </p>
+              <p>
+                <strong>SFT Dataset:</strong> We investigated the impact of cold start condition in SFT on RL training. We utilized a dataset comprising 200,000 samples drawn from SynSQL-2.5M for SFT training (<strong>SynSQL-200K</strong>), with uniform sample size across different difficulty levels. For each sample $v = (x, t, y^*)$, $x$ represents the NL, $t$ represents the reasoning process enclosed in <code>&lt;think&gt;...&lt;/think&gt;</code> tags, and $y^*$ denotes the SQL enclosed in <code>&lt;answer&gt;...&lt;/answer&gt;</code> tags.
+              </p>
+              <p>
+                <strong>RL Dataset:</strong> We randomly sampled 5K NL-SQL pairs from SynSQL-2.5M with <strong>Complex</strong> difficulty (<strong>SynSQL-Complex-5K</strong>). For each pair $v = (x, y^*)$ in the RL dataset, $x$ represents the NL while $y^*$ denotes the SQL candidate. The aim of reinforcement learning is to enhance the accuracy of the answers and ensure they adhere to the expected format.
+              </p>
             </div>
             
+            <!-- Reinforcement Training -->
+            <div class="method-subsection" style="margin-top: 2rem;">
+              <h3 class="title is-4">Reinforcement Training with GRPO</h3>
+              <p>
+                In the reinforcement learning phase, we employ the Group Relative Policy Optimization (GRPO) algorithm to enhance our training protocol, which obviates the need for the value model and operates with less memory requirements. For each natural language question aligned with its corresponding database schema, the policy model generates a set of $G$ SQL candidates $\{o_1, o_2, \ldots, o_G\}$ from the old policy $\pi_{old}$, which are evaluated using a composite reward function.
+              </p>
+              <div class="has-text-centered" style="margin: 1.5rem 0;">
+                <p>$$\mathcal{J}_{\text{GRPO}}(\theta) = \mathbb{E}_{\mathbf{v} \sim P(\mathbf{V}), \{o_i\}_{i=1}^G \sim \pi_{\theta_{\text{old}}}(O|\mathbf{v})} \left[ \frac{1}{G} \sum_{i=1}^G \left( \min \left( r_i^{\text{ratio}} A_i, \text{clip} \left( r_i^{\text{ratio}}, 1-\epsilon, 1+\epsilon \right) A_i \right) - \beta D_{\text{KL}}(\pi_\theta \| \pi_{\text{ref}}) \right) \right]$$</p>
+              </div>
+              <p>
+                where $r_i^{\text{ratio}} = \frac{\pi_\theta(o_i | V)}{\pi_{old}(o_i | V)}$ represents the importance sampling ratio; $A_i$ represents the group-relative advantage for each output; the clipping operator, hyperparameter $\epsilon$ and $\beta$ control the update step and divergence regularization; $\pi_{\text{ref}}$ represents the reference policy.
+              </p>
+            </div>
+
+            <!-- Reward Function Design -->
             <div class="method-subsection" style="margin-top: 2rem;">
               <h3 class="title is-4">Reward Function Design</h3>
-              <p><em>Subsection content goes here...</em></p>
+              <p>
+                We utilize a progressive feedback mechanism consisting of four types of rewards: Format Reward, Execution Reward, Result Reward, and Length Reward. This layered approach enhances the model's learning by providing detailed feedback at various stages.
+              </p>
+              
+              <p style="margin-top: 1rem;">
+                <strong>Format Reward ($S_f$):</strong> We encourage the model to enclose the reasoning process within <code>&lt;think&gt;...&lt;/think&gt;</code> tags and the final answer within <code>&lt;answer&gt;...&lt;/answer&gt;</code> tags. SQL statements must be contained within <code>```sql...```</code> tags.
+              </p>
+              <div class="has-text-centered" style="margin: 1rem 0;">
+                <p>$$S_f = \begin{cases} 1, & \text{if format is correct} \\ -1, & \text{if format is incorrect} \end{cases}$$</p>
+              </div>
+
+              <p style="margin-top: 1rem;">
+                <strong>Execution Reward ($S_e$):</strong> Evaluates the syntactic correctness of SQL candidates, preventing the model from generating unexecutable responses.
+              </p>
+              <div class="has-text-centered" style="margin: 1rem 0;">
+                <p>$$S_e = \begin{cases} 2, & \text{if SQL candidate is executable} \\ 0, & \text{if format is incorrect} \\ -2, & \text{if SQL candidate is not executable} \end{cases}$$</p>
+              </div>
+
+              <p style="margin-top: 1rem;">
+                <strong>Result Reward ($S_r$):</strong> Evaluates the accuracy of query results using Execution Accuracy (EX).
+              </p>
+              <div class="has-text-centered" style="margin: 1rem 0;">
+                <p>$$S_r = \begin{cases} 3, & \text{if query result is correct} \\ 0, & \text{if format is incorrect or not executable} \\ -3, & \text{if query result is incorrect} \end{cases}$$</p>
+              </div>
+
+              <p style="margin-top: 1rem;">
+                <strong>Length Reward ($S_l$):</strong> Incentivizes the model to produce comprehensive reasoning processes while avoiding superfluous explanations.
+              </p>
+              <div class="has-text-centered" style="margin: 1rem 0;">
+                <p>$$S_l = \begin{cases} 0.5 \times S_{tl} + S_{al}, & \text{if correct and } len_{response} \leq \text{MAX\_LENGTH} \\ 0.5 + S_{al}, & \text{if correct and } len_{response} > \text{MAX\_LENGTH} \\ 0, & \text{other cases} \end{cases}$$</p>
+              </div>
+              <p style="font-size: 0.95rem; color: #666;">
+                where $S_{tl} = (len_{think} + len_{answer}) / \text{MAX\_LENGTH}$ and $S_{al} = len_{sql} / len_{answer}$.
+              </p>
+            </div>
+
+            <!-- SQL Candidates Selection -->
+            <div class="method-subsection" style="margin-top: 2rem;">
+              <h3 class="title is-4">SQL Candidates Selection</h3>
+              <p>
+                To select the most appropriate SQL in the reasoning process, the model generates several SQL candidates and their thought processes for a problem. We execute all SQL candidates and select the SQL with the highest score as the final answer based on self-consistency voting. Notably, the reasoning response of SQL-R1 comprises an observable process of thinking and interpreting, making the results easier for the user to understand.
+              </p>
             </div>
           </div>
         </div>
@@ -273,47 +328,112 @@
       <div class="column is-four-fifths">
         <h2 class="title is-3">Experiments</h2>
         <div class="content has-text-justified">
-          <!-- Experiment content will be added here -->
           <div class="experiment-content">
             <p>
-              <em>Experiment section content will be added here. This section supports tables, figures, and detailed experimental results.</em>
+              We conduct comprehensive experiments on two widely-used NL2SQL benchmarks: <strong>Spider</strong> and <strong>BIRD</strong>. These datasets cover a wide range of database schemas and query complexities, providing a robust evaluation of our model's capabilities.
             </p>
             
             <!-- Main Results Subsection -->
             <div class="experiment-subsection" style="margin-top: 2rem;">
               <h3 class="title is-4">Main Results</h3>
-              <p><em>Main experimental results description goes here...</em></p>
+              <p>
+                Our SQL-R1 model demonstrates state-of-the-art performance on both benchmark datasets. The results show significant improvements over baseline supervised fine-tuning approaches:
+              </p>
+              
+              <ul style="margin: 1rem 0;">
+                <li><strong>Spider Benchmark:</strong> SQL-R1 achieves an execution accuracy of <strong>88.6%</strong>, outperforming previous state-of-the-art methods</li>
+                <li><strong>BIRD Benchmark:</strong> SQL-R1 achieves an execution accuracy of <strong>67.1%</strong>, demonstrating strong generalization to more complex real-world scenarios</li>
+              </ul>
+
+              <p>
+                These results validate the effectiveness of our reinforcement learning approach in enhancing NL2SQL reasoning capabilities, particularly in handling complex queries involving multi-table joins, nested subqueries, and advanced SQL operations.
+              </p>
               
               <!-- Results table/figure container -->
-              <div class="columns is-centered has-text-centered experiment-results">
+              <div class="columns is-centered has-text-centered experiment-results" style="margin-top: 1.5rem;">
                 <div class="column">
                   <img src="images/table1.png" alt="Experiment Results" style="width: 100%; height: auto; border: 1px solid #ddd; border-radius: 6px;"/>
                   <p class="has-text-grey" style="margin-top: 0.5rem; font-size: 0.9rem;">
-                    <strong>Table 1:</strong> Performance comparison on benchmark datasets
+                    <strong>Table 1:</strong> Performance comparison on Spider and BIRD benchmarks. SQL-R1 shows consistent improvements across different model sizes.
                   </p>
                 </div>
               </div>
             </div>
             
-            <!-- Ablation Study Subsection -->
+            <!-- Model Variants -->
             <div class="experiment-subsection" style="margin-top: 2rem;">
-              <h3 class="title is-4">Ablation Study</h3>
-              <p><em>Ablation study results and analysis go here...</em></p>
+              <h3 class="title is-4">Model Variants and Scalability</h3>
+              <p>
+                We release SQL-R1 in three different sizes to accommodate various deployment scenarios:
+              </p>
+              <ul>
+                <li><strong>SQL-R1-3B:</strong> Lightweight model suitable for resource-constrained environments</li>
+                <li><strong>SQL-R1-7B:</strong> Balanced performance and efficiency for general use cases</li>
+                <li><strong>SQL-R1-14B:</strong> Maximum performance for demanding applications</li>
+              </ul>
+              <p>
+                All variants demonstrate consistent improvements over their respective supervised baselines, confirming the scalability of our reinforcement learning approach across different model capacities.
+              </p>
+            </div>
+
+            <!-- Additional Experimental Details -->
+            <div class="experiment-subsection" style="margin-top: 3rem;">
+              <h3 class="title is-4">Additional Experimental Details</h3>
+              <p style="margin-bottom: 2rem;">
+                Our paper provides comprehensive experimental analysis beyond the results presented above. For detailed information on the following aspects, we refer readers to the full paper:
+              </p>
               
-              <!-- Placeholder for additional figures -->
-              <div class="columns is-multiline experiment-figures">
-                <div class="column is-half">
-                  <div style="background: #f9f9f9; border: 2px dashed #ddd; padding: 2rem; border-radius: 6px;">
-                    <p style="color: #888; font-style: italic;">Ablation Figure 1</p>
-                    <p style="color: #888; font-size: 0.9rem;">Component analysis results</p>
+              <div style="background: linear-gradient(to right, #f8f9fa 0%, #ffffff 100%); border: 1px solid #e1e4e8; padding: 2.5rem; margin: 2rem 0; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.08);">
+                <div class="columns is-multiline" style="margin-bottom: 0;">
+                  <div class="column is-6" style="padding-bottom: 0.5rem;">
+                    <div style="display: flex; align-items: start; margin-bottom: 1.5rem;">
+                      <div style="min-width: 8px; height: 8px; background: #3273dc; border-radius: 50%; margin-top: 0.5rem; margin-right: 1rem;"></div>
+                      <div>
+                        <strong style="color: #2c3e50;">Ablation Studies:</strong>
+                        <p style="color: #555; margin-top: 0.3rem; line-height: 1.6;">Detailed analysis of individual component contributions, including reward function design, training strategies, and data engineering techniques</p>
+                      </div>
+                    </div>
+                    <div style="display: flex; align-items: start;">
+                      <div style="min-width: 8px; height: 8px; background: #3273dc; border-radius: 50%; margin-top: 0.5rem; margin-right: 1rem;"></div>
+                      <div>
+                        <strong style="color: #2c3e50;">Error Analysis:</strong>
+                        <p style="color: #555; margin-top: 0.3rem; line-height: 1.6;">In-depth examination of failure cases and challenging query patterns across different complexity levels</p>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="column is-6" style="padding-bottom: 0.5rem;">
+                    <div style="display: flex; align-items: start; margin-bottom: 1.5rem;">
+                      <div style="min-width: 8px; height: 8px; background: #3273dc; border-radius: 50%; margin-top: 0.5rem; margin-right: 1rem;"></div>
+                      <div>
+                        <strong style="color: #2c3e50;">Comparative Evaluation:</strong>
+                        <p style="color: #555; margin-top: 0.3rem; line-height: 1.6;">Extended comparisons with state-of-the-art methods on additional benchmarks and query types</p>
+                      </div>
+                    </div>
+                    <div style="display: flex; align-items: start;">
+                      <div style="min-width: 8px; height: 8px; background: #3273dc; border-radius: 50%; margin-top: 0.5rem; margin-right: 1rem;"></div>
+                      <div>
+                        <strong style="color: #2c3e50;">Application Scenarios:</strong>
+                        <p style="color: #555; margin-top: 0.3rem; line-height: 1.6;">Discussion of practical deployment considerations and use cases in real-world database systems</p>
+                      </div>
+                    </div>
                   </div>
                 </div>
-                <div class="column is-half">
-                  <div style="background: #f9f9f9; border: 2px dashed #ddd; padding: 2rem; border-radius: 6px;">
-                    <p style="color: #888; font-style: italic;">Ablation Figure 2</p>
-                    <p style="color: #888; font-size: 0.9rem;">Performance breakdown</p>
-                  </div>
-                </div>
+              </div>
+
+              <div class="has-text-centered" style="margin-top: 2.5rem; padding: 2rem; background: #fafbfc; border-radius: 8px;">
+                <p style="margin-bottom: 1.5rem; color: #586069; font-size: 1.05rem;">
+                  📄 For complete experimental protocols, additional results, and comprehensive discussions
+                </p>
+                <a href="https://arxiv.org/pdf/2504.08600.pdf" target="_blank" 
+                   class="button is-link is-medium" style="border-radius: 6px; padding-left: 2rem; padding-right: 2rem; box-shadow: 0 4px 12px rgba(50, 115, 220, 0.3); transition: all 0.3s ease;">
+                  <span class="icon">
+                    <i class="fas fa-file-pdf"></i>
+                  </span>
+                  <span>Read the Full Paper</span>
+                </a>
+                <p style="margin-top: 1.2rem; font-size: 0.9rem; color: #6a737d; font-style: italic;">
+                  Ma et al., "SQL-R1: Training Natural Language to SQL Reasoning Model By Reinforcement Learning", arXiv:2504.08600, 2025
+                </p>
               </div>
             </div>
             
