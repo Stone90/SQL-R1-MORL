@@ -447,16 +447,48 @@
 <!--BibTex citation -->
   <section class="section" id="BibTeX">
     <div class="container is-max-desktop content">
-      <h2 class="title">BibTeX</h2>
-      <pre><code>@article{ma2025sql,
+      <h2 class="title is-3">Citation</h2>
+      <p class="has-text-centered" style="margin-bottom: 1.5rem; color: #555; font-size: 1.05rem; font-weight: 500;">
+        If you find SQL-R1 useful for your research, please consider citing our paper:
+      </p>
+      <div class="bibtex-container">
+        <button class="copy-button" onclick="copyBibTeX(this)">
+          <i class="fas fa-copy"></i> Copy
+        </button>
+        <pre><code>@article{ma2025sql,
   title={SQL-R1: Training Natural Language to SQL Reasoning Model By Reinforcement Learning},
   author={Ma, Peixian and Zhuang, Xialie and Xu, Chengjin and Jiang, Xuhui and Chen, Ran and Guo, Jian},
   journal={arXiv preprint arXiv:2504.08600},
   year={2025}
 }</code></pre>
+      </div>
     </div>
 </section>
 <!--End BibTex citation -->
+
+<script>
+function copyBibTeX(button) {
+  const code = button.nextElementSibling.querySelector('code');
+  const text = code.textContent;
+  
+  navigator.clipboard.writeText(text).then(() => {
+    const originalText = button.innerHTML;
+    button.innerHTML = '<i class="fas fa-check"></i> Copied!';
+    button.classList.add('copied');
+    
+    setTimeout(() => {
+      button.innerHTML = originalText;
+      button.classList.remove('copied');
+    }, 2000);
+  }).catch(err => {
+    console.error('Copy failed:', err);
+    button.innerHTML = '<i class="fas fa-times"></i> Failed';
+    setTimeout(() => {
+      button.innerHTML = '<i class="fas fa-copy"></i> Copy';
+    }, 2000);
+  });
+}
+</script>
 
 
   <footer class="footer">
