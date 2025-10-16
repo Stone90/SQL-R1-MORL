@@ -94,16 +94,28 @@ This repository is organized as follows:
 
 ```
 SQL-R1/
-├── data/                             # Datasets
-│   ├── Spider/      
-│   └── BIRD/        
-├── models/                           # Base models or checkpoints
-│   ├── Qwen2.5-Coder-3B-Instruct/   
-│   └── Qwen2.5-Coder-7B-Instruct/   
-......
-├── sh/                               # Scripts for data processing, training, inference and evaluation
-├── src/                              # Source code
-└── verl/                             # Verl framework
+├── 📁 data/                             # Datasets and Databases
+│   ├── 📁 Spider/      
+│   └── 📁 BIRD/        
+├── 📁 models/                           # Foundation models or checkpoints
+│   ├── 📁 Qwen2.5-Coder-3B-Instruct/   
+│   └── 📁 Qwen2.5-Coder-7B-Instruct/   
+├── 📁 db_info/                          # Database information files (Just for inference)
+├── 📁 example_data/                     # Example data (Training)
+├── 📁 sh/                               # Scripts for data processing, training, inference and evaluation
+│   ├── 📄 train.sh
+│   ├── 📄 inference.sh
+│   ├── 📄 eval_spider.sh
+│   └── 📄 eval_bird.sh
+├── 📁 src/                              # Source code
+│   ├── 📁 data_preprocess/
+│   ├── 📁 evaluations/
+│   ├── 📁 utils/
+│   ├── 📄 inference.py
+│   └── 📄 evaluation_*.py
+├── 📁 verl/                             # Verl reinforcement learning framework
+├── 📄 requirements.txt
+└── 📄 README.md
 ```
 
 
@@ -183,7 +195,7 @@ SQL-R1 can be effectively utilized in the following key areas:
    - Supports transfer learning for domain-specific adaptations
    - Facilitates model versioning and performance tracking
 
-This may be added in the future work. If you have any ideas, please feel free to contact us.
+This may be added in the future work. If you have any ideas, please feel free to contact us. 
 
 ## Thanks for
 
