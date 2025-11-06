@@ -20,6 +20,13 @@
 </p>
 </div>
 
+<div align="center">
+<p>
+<i class="fa-solid fa-envelope"></i> Contact: <a href="mailto:pma929@connect.hkust-gz.edu.cn">pma929@connect.hkust-gz.edu.cn</a>, <a href="mailto:xuchengjin@idea.edu.cn">xuchengjin@idea.edu.cn</a>
+</p>
+</div>
+
+
 <div align="center" style="display: flex; gap: 5px; justify-content: center;">
 <a href="https://dataarctech.github.io/SQL-R1/"><img src="https://img.shields.io/badge/🏠_Homepage-blue?style=for-the-badge"/></a>
 <a href="https://arxiv.org/abs/2504.08600"><img src="https://img.shields.io/badge/arXiv-red?style=for-the-badge&logo=arxiv"/></a>
