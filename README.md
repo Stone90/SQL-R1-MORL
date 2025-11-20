@@ -30,10 +30,10 @@
 <div align="center" style="display: flex; gap: 5px; justify-content: center;">
 <a href="https://dataarctech.github.io/SQL-R1/"><img src="https://img.shields.io/badge/🏠_Homepage-blue?style=for-the-badge"/></a>
 <a href="https://arxiv.org/abs/2504.08600"><img src="https://img.shields.io/badge/arXiv-red?style=for-the-badge&logo=arxiv"/></a>
-<a href="https://github.com/MPX0222/SQL-R1"><img src="https://img.shields.io/badge/GitHub-black?style=for-the-badge&logo=github"/></a>
+<a href="https://github.com/DataArcTech/SQL-R1"><img src="https://img.shields.io/badge/GitHub-black?style=for-the-badge&logo=github"/></a>
 <a href="https://huggingface.co/MPX0222forHF/SQL-R1-7B"><img src="https://img.shields.io/badge/HuggingFace-FF9D00?style=for-the-badge&logo=huggingface"/></a>
 <a href="https://www.modelscope.cn/models/MPX0222/SQL-R1-7B"><img src="https://img.shields.io/badge/🤖_ModelScope-946CE6?style=for-the-badge"/></a>
-<a href="https://github.com/MPX0222/SQL-R1/stargazers"><img src="https://img.shields.io/github/stars/MPX0222/SQL-R1?style=for-the-badge&color=white"/></a>
+<a href="https://github.com/DataArcTech/SQL-R1/stargazers"><img src="https://img.shields.io/github/stars/DataArcTech/SQL-R1?style=for-the-badge&color=white"/></a>
 </div>
 <br>
 
@@ -210,5 +210,5 @@ We thank [OmniSQL](https://github.com/RUCKBReasoning/OmniSQL) and follow their e
 
 ## Star History
 
-[![Star History Chart](https://api.star-history.com/svg?repos=MPX0222/SQL-R1&type=Date)](https://www.star-history.com/#MPX0222/SQL-R1&Date)
+[![Star History Chart](https://api.star-history.com/svg?repos=DataArcTech/SQL-R1&type=Date)](https://www.star-history.com/#DataArcTech/SQL-R1&Date)
 
