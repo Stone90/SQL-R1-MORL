@@ -1,3 +1,4 @@
+# Baseline training: single-objective (accuracy only, no PC-Grad)
 # Load WANDB_API_KEY from .env if present
 if [ -f .env ]; then
     export $(grep -v '^#' .env | xargs)
@@ -15,7 +16,7 @@ export NCCL_TIMEOUT=1800
 DATA_DIR_PATH=data
 
 # Environment Variables
-RUN_ID=7B
+RUN_ID=7B-baseline
 GPU_ENV=2xA100
 MODEL_ENV=Qwen2.5-Coder-7B-Instruct
 PROJECT_NAME=SQL-R1-MORL
@@ -65,6 +66,8 @@ for i, row in df.head(2).iterrows():
 "
 echo ""
 echo "========================================="
+echo ">>> BASELINE MODE: PC-Grad DISABLED (single-objective accuracy only)"
+echo "========================================="
 
 set -x
 
@@ -99,7 +102,7 @@ python -m verl.trainer.main_ppo \
     actor_rollout_ref.rollout.temperature=0.7 \
     actor_rollout_ref.ref.log_prob_micro_batch_size=4 \
     actor_rollout_ref.ref.fsdp_config.param_offload=False \
-    actor_rollout_ref.actor.enable_pc_grad=True \
+    actor_rollout_ref.actor.enable_pc_grad=False \
     algorithm.kl_ctrl.kl_coef=0.001 \
     trainer.critic_warmup=0 \
     trainer.logger=['wandb'] \
@@ -111,4 +114,4 @@ python -m verl.trainer.main_ppo \
     trainer.default_hdfs_dir=null \
     trainer.save_freq=100 \
     trainer.test_freq=100 \
-    trainer.total_epochs=1 $@ 2>&1 | tee $LOG_PATH/$MODEL_ENV/grpo.log
+    trainer.total_epochs=1 $@ 2>&1 | tee $LOG_PATH/$MODEL_ENV/grpo_baseline.log
