@@ -10,69 +10,110 @@ MODEL_DIR="$PROJ_DIR/models"
 DATA_DIR="$PROJ_DIR/data"
 DB_DIR="$PROJ_DIR/databases"
 
-echo "=== SQL-R1-MORL Setup ==="
-echo "Project dir: $PROJ_DIR"
+# ── Logging helpers ──
+BOLD='\033[1m'
+GREEN='\033[1;32m'
+YELLOW='\033[1;33m'
+RED='\033[1;31m'
+CYAN='\033[1;36m'
+RESET='\033[0m'
+
+banner() { echo ""; echo "${CYAN}╔══════════════════════════════════════════════════════╗${RESET}"; echo "${CYAN}║${RESET}  ${BOLD}$1${RESET}"; echo "${CYAN}╚══════════════════════════════════════════════════════╝${RESET}"; }
+step()   { echo "${GREEN}>>>${RESET} ${BOLD}$1${RESET}"; }
+info()   { echo "    ${YELLOW}→${RESET} $1"; }
+ok()     { echo "    ${GREEN}✓${RESET} $1"; }
+fail()   { echo "    ${RED}✗${RESET} $1"; }
+
+banner "SQL-R1-MORL Setup"
+info "Project dir: $PROJ_DIR"
+info "Model dir:   $MODEL_DIR"
+info "Data dir:    $DATA_DIR"
+info "DB dir:      $DB_DIR"
 
 # ── 1. Model: Qwen2.5-Coder-7B-Instruct ──
 MODEL_NAME="Qwen2.5-Coder-7B-Instruct"
 MODEL_PATH="$MODEL_DIR/$MODEL_NAME"
 
+banner "Step 1/4: Download Model ($MODEL_NAME)"
+
 if [ -d "$MODEL_PATH" ] && [ "$(ls -A "$MODEL_PATH" 2>/dev/null)" ]; then
-    echo ">>> Model already exists at $MODEL_PATH, skipping."
+    ok "Model already exists at $MODEL_PATH — skipping download"
+    info "Files: $(ls "$MODEL_PATH"/*.safetensors 2>/dev/null | wc -l) safetensor shards"
 else
-    echo ">>> Downloading $MODEL_NAME from HuggingFace..."
+    step "Downloading $MODEL_NAME from HuggingFace (~15 GB)..."
+    info "This may take 5-30 minutes depending on connection speed"
     mkdir -p "$MODEL_DIR"
     if ! command -v huggingface-cli &>/dev/null; then
-        echo "huggingface-cli not found, installing huggingface_hub..."
+        info "Installing huggingface_hub CLI..."
         pip install -q huggingface_hub
     fi
     huggingface-cli download "Qwen/$MODEL_NAME" --local-dir "$MODEL_PATH"
-    echo ">>> Model downloaded to $MODEL_PATH"
+    ok "Model downloaded to $MODEL_PATH"
+    info "Files: $(ls "$MODEL_PATH"/*.safetensors 2>/dev/null | wc -l) safetensor shards"
 fi
 
 # ── 2. Training data: SynSQL-2.5M (parquet) ──
 TRAIN_FILE="$DATA_DIR/train.parquet"
 TEST_FILE="$DATA_DIR/test.parquet"
 
+banner "Step 2/4: Download Training Data"
+
 if [ -f "$TRAIN_FILE" ] && [ -f "$TEST_FILE" ]; then
-    echo ">>> Training data already exists at $DATA_DIR, skipping."
+    ok "Training data already exists at $DATA_DIR — skipping download"
+    info "train.parquet: $(du -h "$TRAIN_FILE" | cut -f1)"
+    info "test.parquet:  $(du -h "$TEST_FILE" | cut -f1)"
 else
-    echo ">>> Downloading SynSQL training data..."
+    step "Downloading SynSQL training data from HuggingFace..."
     mkdir -p "$DATA_DIR"
     if ! command -v huggingface-cli &>/dev/null; then
         pip install -q huggingface_hub
     fi
     huggingface-cli download "StoneLin/SQL-R1-Data" --repo-type dataset --local-dir "$DATA_DIR"
-    echo ">>> Training data downloaded to $DATA_DIR"
+    ok "Training data downloaded to $DATA_DIR"
+    info "train.parquet: $(du -h "$TRAIN_FILE" | cut -f1)"
+    info "test.parquet:  $(du -h "$TEST_FILE" | cut -f1)"
 fi
 
 # ── 3. Databases: SynSQL SQLite files (for reward computation) ──
+banner "Step 3/4: Download SQLite Databases"
+
 if [ -d "$DB_DIR" ] && [ "$(ls -A "$DB_DIR" 2>/dev/null)" ]; then
-    echo ">>> Databases already exist at $DB_DIR, skipping."
+    ok "Databases already exist at $DB_DIR — skipping download"
+    info "Database count: $(ls -d "$DB_DIR"/*/ 2>/dev/null | wc -l) databases"
 else
-    echo ">>> Downloading SynSQL databases..."
+    step "Downloading SynSQL SQLite databases from HuggingFace..."
+    info "These are needed for execution-based reward (EXPLAIN QUERY PLAN)"
     mkdir -p "$DB_DIR"
     if ! command -v huggingface-cli &>/dev/null; then
         pip install -q huggingface_hub
     fi
     huggingface-cli download "StoneLin/SQL-R1-Databases" --repo-type dataset --local-dir "$DB_DIR"
-    echo ">>> Databases downloaded to $DB_DIR"
+    ok "Databases downloaded to $DB_DIR"
+    info "Database count: $(ls -d "$DB_DIR"/*/ 2>/dev/null | wc -l) databases"
 fi
 
 # ── 4. Data cleaning: validate gold SQL runs against databases ──
-echo ""
-echo "=== Validating Data Integrity ==="
+banner "Step 4/4: Validate Data Integrity"
+step "Checking that every gold SQL query executes against its database..."
+info "This ensures no bad samples corrupt training rewards"
+
 python3 - "$DATA_DIR" "$DB_DIR" <<'PYEOF'
-import sys, os, ast, sqlite3
+import sys, os, ast, sqlite3, time
 import pandas as pd
 
 data_dir = sys.argv[1]
 db_dir = sys.argv[2]
 
+BOLD = '\033[1m'
+GREEN = '\033[1;32m'
+YELLOW = '\033[1;33m'
+RED = '\033[1;31m'
+RESET = '\033[0m'
+
 for split in ['train', 'test']:
     path = os.path.join(data_dir, f'{split}.parquet')
     if not os.path.exists(path):
-        print(f"  [{split}] File not found, skipping.")
+        print(f"    {RED}✗{RESET} [{split}] File not found at {path}")
         continue
 
     df = pd.read_parquet(path)
@@ -80,9 +121,16 @@ for split in ['train', 'test']:
     drop_indices = []
     errors = {'no_db_id': 0, 'no_gold_sql': 0, 'db_missing': 0, 'sql_error': 0}
 
-    print(f"  [{split}] Validating {orig_len} samples...")
+    print(f"    {YELLOW}→{RESET} [{BOLD}{split}{RESET}] Validating {orig_len:,} samples...")
+    t0 = time.time()
 
     for idx, row in df.iterrows():
+        if idx % 5000 == 0 and idx > 0:
+            elapsed = time.time() - t0
+            rate = idx / elapsed
+            eta = (orig_len - idx) / rate if rate > 0 else 0
+            print(f"      ... {idx:,}/{orig_len:,} checked ({len(drop_indices)} bad so far, ETA {eta:.0f}s)")
+
         gt = row.get('reward_model', {})
         if isinstance(gt, str):
             try:
@@ -130,22 +178,28 @@ for split in ['train', 'test']:
             errors['sql_error'] += 1
             continue
 
+    elapsed = time.time() - t0
+
     if drop_indices:
         df_clean = df.drop(index=drop_indices).reset_index(drop=True)
         df_clean.to_parquet(path, index=False)
-        print(f"  [{split}] Dropped {len(drop_indices)}/{orig_len} bad samples -> {len(df_clean)} remaining")
+        print(f"    {RED}✗{RESET} [{BOLD}{split}{RESET}] Dropped {len(drop_indices):,}/{orig_len:,} bad samples → {GREEN}{len(df_clean):,}{RESET} remaining ({elapsed:.1f}s)")
         for reason, count in errors.items():
             if count > 0:
-                print(f"           {reason}: {count}")
+                print(f"           {reason}: {count:,}")
     else:
-        print(f"  [{split}] All {orig_len} samples valid.")
+        print(f"    {GREEN}✓{RESET} [{BOLD}{split}{RESET}] All {orig_len:,} samples valid ({elapsed:.1f}s)")
 PYEOF
 
+# ── Summary ──
+banner "Setup Complete"
 echo ""
-echo "=== Setup Complete ==="
-echo "Model:     $MODEL_PATH"
-echo "Data:      $DATA_DIR"
-echo "Databases: $DB_DIR"
+info "Model:     $MODEL_PATH"
+info "Data:      $DATA_DIR"
+info "Databases: $DB_DIR"
 echo ""
-echo "Set SYNSQL_DB_DIR before training if databases are not at default path:"
-echo "  export SYNSQL_DB_DIR=$DB_DIR"
+step "Next steps:"
+info "1. Set database path:  export SYNSQL_DB_DIR=$DB_DIR"
+info "2. Run baseline:       sh sh/train_baseline.sh"
+info "3. Run MORL (PC-Grad): sh sh/train.sh"
+echo ""
