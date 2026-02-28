@@ -43,11 +43,9 @@ else
     step "Downloading $MODEL_NAME from HuggingFace (~15 GB)..."
     info "This may take 5-30 minutes depending on connection speed"
     mkdir -p "$MODEL_DIR"
-    if ! command -v huggingface-cli &>/dev/null; then
-        info "Installing huggingface_hub CLI..."
-        pip install -q huggingface_hub
-    fi
-    huggingface-cli download "Qwen/$MODEL_NAME" --local-dir "$MODEL_PATH"
+    export HF_HUB_ENABLE_HF_TRANSFER=1
+    hf download "Qwen/$MODEL_NAME" --local-dir "$MODEL_PATH" \
+        --exclude "*.pt" --exclude "*.bin"
     ok "Model downloaded to $MODEL_PATH"
     info "Files: $(ls "$MODEL_PATH"/*.safetensors 2>/dev/null | wc -l) safetensor shards"
 fi
@@ -67,11 +65,8 @@ if [ "$TRAIN_SIZE" -gt 1000 ] && [ "$TEST_SIZE" -gt 1000 ]; then
 else
     step "Downloading SynSQL-Complex-5K training data from HuggingFace..."
     mkdir -p "$DATA_DIR"
-    if ! command -v huggingface-cli &>/dev/null; then
-        pip install -q huggingface_hub
-    fi
     HF_DATA_TMP="$DATA_DIR/.hf_download"
-    huggingface-cli download "MPX0222forHF/SynSQL-Complex-5K" --repo-type dataset --local-dir "$HF_DATA_TMP"
+    hf download "MPX0222forHF/SynSQL-Complex-5K" --repo-type dataset --local-dir "$HF_DATA_TMP"
     # HF datasets store parquets in subdirs — find and copy them
     TRAIN_PQ=$(find "$HF_DATA_TMP" -name "*train*.parquet" | head -1)
     TEST_PQ=$(find "$HF_DATA_TMP" -name "*test*.parquet" | head -1)
@@ -101,29 +96,35 @@ else
     info "These are needed for execution-based reward (EXPLAIN QUERY PLAN)"
     info "This download is large — 16,583 databases in data.zip"
     mkdir -p "$DB_DIR"
-    if ! command -v huggingface-cli &>/dev/null; then
-        pip install -q huggingface_hub
-    fi
-    DB_TMP="$DB_DIR/.hf_download"
-    huggingface-cli download "seeklhy/OmniSQL-datasets" data.zip --repo-type dataset --local-dir "$DB_TMP"
+    DB_TMP="$PROJ_DIR/.db_download"
+    hf download "seeklhy/OmniSQL-datasets" data.zip --repo-type dataset --local-dir "$DB_TMP"
     step "Extracting databases from data.zip..."
-    unzip -q "$DB_TMP/data.zip" -d "$DB_TMP/extracted"
-    # Find the SynSQL database directory (contains {db_id}/{db_id}.sqlite)
-    SYNSQL_DB=$(find "$DB_TMP/extracted" -type d -name "SynSQL*" | head -1)
-    if [ -z "$SYNSQL_DB" ]; then
-        # Fall back: look for any directory containing .sqlite files
-        SYNSQL_DB=$(dirname "$(find "$DB_TMP/extracted" -name "*.sqlite" -print -quit)")
-        SYNSQL_DB=$(dirname "$SYNSQL_DB")  # go up one level to parent of {db_id}/
+    if command -v pv &>/dev/null; then
+        pv "$DB_TMP/data.zip" | unzip -q -d "$DB_TMP/extracted" -
+    else
+        unzip -q "$DB_TMP/data.zip" -d "$DB_TMP/extracted"
+    fi
+    # Zip contains data/SynSQL-2.5M/databases/{db_id}/{db_id}.sqlite
+    SYNSQL_DB="$DB_TMP/extracted/data/SynSQL-2.5M/databases"
+    if [ ! -d "$SYNSQL_DB" ]; then
+        # Fall back: search for the databases directory
+        SYNSQL_DB=$(find "$DB_TMP/extracted" -type d -name "databases" | head -1)
     fi
     if [ -z "$SYNSQL_DB" ] || [ ! -d "$SYNSQL_DB" ]; then
         fail "Could not find SynSQL databases in extracted archive"
         info "Contents of extracted archive:"
-        find "$DB_TMP/extracted" -maxdepth 3 -type d
+        find "$DB_TMP/extracted" -maxdepth 4 -type d
         exit 1
     fi
+    # Symlink instead of copying (saves disk space)
+    ln -sfn "$SYNSQL_DB" "$DB_DIR/databases_src"
     # Move database subdirectories into DB_DIR
-    cp -r "$SYNSQL_DB"/*/ "$DB_DIR/" 2>/dev/null || mv "$SYNSQL_DB"/* "$DB_DIR/"
-    rm -rf "$DB_TMP"
+    for db in "$SYNSQL_DB"/*/; do
+        db_name=$(basename "$db")
+        ln -sfn "$db" "$DB_DIR/$db_name"
+    done
+    rm -f "$DB_TMP/data.zip"
+    info "Kept extracted databases at $SYNSQL_DB (symlinked into $DB_DIR)"
     ok "Databases extracted to $DB_DIR"
     info "Database count: $(ls -d "$DB_DIR"/*/ 2>/dev/null | wc -l) databases"
 fi
