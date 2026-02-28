@@ -146,6 +146,12 @@ def compute_advantage(data: DataProto, adv_estimator, gamma=1.0, lam=1.0, num_re
 
         # Compute per-objective GRPO advantages for MORL PC-Grad
         if 'accuracy_rewards' in data.batch.keys():
+            # Snapshot raw reward scalars before GRPO overwrites them with advantages
+            acc_raw = (data.batch['accuracy_rewards'] * (data.batch['accuracy_rewards'] != 0)).sum(dim=-1)
+            eff_raw = (data.batch['efficiency_rewards'] * (data.batch['efficiency_rewards'] != 0)).sum(dim=-1)
+            data.non_tensor_batch['accuracy_reward_raw_mean'] = torch.mean(acc_raw).item()
+            data.non_tensor_batch['efficiency_reward_raw_mean'] = torch.mean(eff_raw).item()
+
             for key in ['accuracy_rewards', 'efficiency_rewards']:
                 obj_adv, _ = core_algos.compute_grpo_outcome_advantage(
                     token_level_rewards=data.batch[key],
@@ -314,12 +320,15 @@ def compute_reward_metrics(batch):
     match_ratio = torch.sum(reward_tensor >= 5.5).float() / reward_tensor.numel()
     reward_metrics["reward/match_ratio"] = match_ratio.detach().item()
 
-    # Per-objective means if available
-    if 'accuracy_rewards' in batch.batch.keys():
-        acc = batch.batch['accuracy_rewards'].sum(-1)
-        eff = batch.batch['efficiency_rewards'].sum(-1)
-        reward_metrics["reward/accuracy_mean"] = torch.mean(acc).detach().item()
-        reward_metrics["reward/efficiency_mean"] = torch.mean(eff).detach().item()
+    # Per-objective raw reward means (before GRPO normalization)
+    if 'accuracy_reward_raw_mean' in batch.non_tensor_batch:
+        reward_metrics["reward/accuracy_mean"] = batch.non_tensor_batch['accuracy_reward_raw_mean']
+        reward_metrics["reward/efficiency_mean"] = batch.non_tensor_batch['efficiency_reward_raw_mean']
+        # Also log post-normalization advantages for debugging
+        acc_adv = batch.batch['accuracy_rewards'].sum(-1)
+        eff_adv = batch.batch['efficiency_rewards'].sum(-1)
+        reward_metrics["reward/accuracy_advantage_mean"] = torch.mean(acc_adv).detach().item()
+        reward_metrics["reward/efficiency_advantage_mean"] = torch.mean(eff_adv).detach().item()
 
     return reward_metrics
 

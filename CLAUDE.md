@@ -52,7 +52,7 @@ Training entry point: `python -m verl.trainer.main_ppo` with Hydra config overri
 | `verl/workers/actor/dp_actor.py` | Actor with PC-Grad dual-pass training |
 | `verl/trainer/ppo/ray_trainer.py` | RayPPOTrainer, per-objective advantage computation |
 | `verl/trainer/ppo/core_algos.py` | GRPO advantage normalization, policy loss, KL penalty |
-| `verl/utils/reward_score/synsql.py` | Reward function: accuracy (format+exec+match, range [-1.5, 6]) and efficiency (brevity score) |
+| `verl/utils/reward_score/synsql.py` | Reward function: accuracy (format+exec+match, range [-1.5, 6]) and efficiency (EXPLAIN QUERY PLAN cost, range [0, 1]) |
 | `verl/trainer/config/ppo_trainer.yaml` | Default Hydra config (`enable_pc_grad: False` by default) |
 | `src/inference.py` | vLLM-based inference for Spider/BIRD benchmarks |
 | `src/evaluation_spider.py` | Spider evaluation (exec accuracy) |
@@ -62,7 +62,7 @@ Training entry point: `python -m verl.trainer.main_ppo` with Hydra config overri
 - Controlled by `actor_rollout_ref.actor.enable_pc_grad=True` in train config
 - `dp_actor.py:pc_grad_combine()` — detects gradient conflicts (negative dot product) and projects conflicting gradients onto the normal plane of each other
 - Two separate forward-backward passes per micro-batch avoid `retain_graph` issues with FSDP
-- Fast path: skips efficiency pass when all efficiency advantages are zero
+- Fast path: skips dual-pass PC-Grad and falls through to single-objective when all efficiency advantages are zero
 
 ### Data Protocol
 

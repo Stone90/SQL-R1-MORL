@@ -1,9 +1,10 @@
 import ast
 import re
 import os
+import sqlite3
 from typing import Dict, Tuple, Optional
 from func_timeout import func_timeout
-from .exec_eval import eval_exec_match
+from .exec_eval import eval_exec_match, get_cursor_from_path, postprocess
 
 def extract_solution(solution_str: str) -> Tuple[Optional[str], Optional[str], str]:
     """Extracts the final answer from the model's response string safely."""
@@ -57,6 +58,73 @@ def validate_response_structure(answer_str: str, processed_str: str) -> Tuple[Op
     return None, False
 
 
+def _explain_plan_cost(cursor, sql: str) -> Optional[float]:
+    """Run EXPLAIN QUERY PLAN and return a cost score based on operation types.
+
+    Lower cost = more efficient plan. Returns None if the query fails to explain.
+
+    Scoring:
+        - SCAN TABLE (full table scan): 10 points each
+        - USE TEMP B-TREE (temp sorting/grouping): 5 points each
+        - SEARCH TABLE USING INDEX (index lookup): 1 point each
+        - Other operations: 0 points
+    """
+    try:
+        cursor.execute(f"EXPLAIN QUERY PLAN {sql}")
+        rows = cursor.fetchall()
+    except Exception:
+        return None
+
+    cost = 0.0
+    for row in rows:
+        detail = str(row[-1]).upper() if row else ""
+        if "SCAN TABLE" in detail:
+            cost += 10.0
+        elif "SEARCH TABLE" in detail or "SEARCH SUBQUERY" in detail:
+            cost += 1.0
+        if "USE TEMP B-TREE" in detail:
+            cost += 5.0
+    return cost
+
+
+def _compute_efficiency_reward(db_path: str, pred_sql: str, gold_sql: str, exec_status: str) -> float:
+    """Compute efficiency reward by comparing EXPLAIN QUERY PLAN costs.
+
+    Returns a reward in [0, 1]:
+        - 1.0 if pred plan cost <= gold plan cost (at least as efficient)
+        - Proportionally penalized if pred is less efficient than gold
+        - 0.0 if the query cannot be explained or is unexecutable
+    Only awarded when exec_status is Match or Mismatch (SQL must at least run).
+    """
+    if exec_status not in ('Match', 'Mismatch'):
+        return 0.0
+
+    try:
+        cursor = get_cursor_from_path(db_path)
+        pred_cost = _explain_plan_cost(cursor, postprocess(pred_sql))
+        gold_cost = _explain_plan_cost(cursor, postprocess(gold_sql))
+        cursor.close()
+        cursor.connection.close()
+    except Exception:
+        return 0.0
+
+    if pred_cost is None or gold_cost is None:
+        return 0.0
+
+    # Pred is at least as efficient as gold
+    if pred_cost <= gold_cost:
+        reward = 1.0
+    else:
+        # Penalize proportionally: reward = gold_cost / pred_cost
+        reward = gold_cost / pred_cost if pred_cost > 0 else 0.0
+
+    # Half credit for Mismatch (executable but wrong result)
+    if exec_status == 'Mismatch':
+        reward *= 0.5
+
+    return reward
+
+
 def compute_score(solution_str: str, ground_truth: Dict):
     """
     Computes the accuracy and efficiency rewards for a given SQL solution.
@@ -67,7 +135,6 @@ def compute_score(solution_str: str, ground_truth: Dict):
     FORMAT_REWARD = 1
     EXEC_REWARD = 2
     RESULT_REWARD = 3
-    LIMIT_LENGTH = 2048
 
     if isinstance(ground_truth, str):
         try:
@@ -84,7 +151,7 @@ def compute_score(solution_str: str, ground_truth: Dict):
         db_id = ground_truth.get('db_id')
         gold_sql = ground_truth.get('sql')
 
-    if not db_id:
+    if not db_id or not gold_sql:
         return -1.0, 0.0
 
     answer_text, think_text, processed_str = extract_solution(solution_str)
@@ -95,10 +162,10 @@ def compute_score(solution_str: str, ground_truth: Dict):
     result_score = 0
     exec_status = "Not Attempted"
 
-    if pred_sql:
-        db_base = os.environ.get('SYNSQL_DB_DIR', '/workspace/synsql_data/data/SynSQL-2.5M/databases')
-        db_path = os.path.join(db_base, db_id, f"{db_id}.sqlite")
+    db_base = os.environ.get('SYNSQL_DB_DIR', '/workspace/synsql_data/data/SynSQL-2.5M/databases')
+    db_path = os.path.join(db_base, db_id, f"{db_id}.sqlite")
 
+    if pred_sql:
         try:
             if not os.path.exists(db_path):
                 exec_status = 'Unexecutable'
@@ -114,20 +181,10 @@ def compute_score(solution_str: str, ground_truth: Dict):
         else:
             exec_score = -1
 
+    # Efficiency: compare EXPLAIN QUERY PLAN costs of pred vs gold
     efficiency_reward = 0.0
-    if format_correct and pred_sql:
-        actual_think = think_text if think_text else ""
-        actual_answer = answer_text if answer_text else ""
-        pos_length = len(actual_think) + len(actual_answer)
-        brevity = 1.0 - min(pos_length / LIMIT_LENGTH, 1.0)
-
-        if exec_status == 'Match':
-            # Full brevity reward for correct SQL
-            efficiency_reward = brevity
-        elif exec_status == 'Mismatch':
-            # Partial credit: executable but wrong -- still reward brevity at half weight
-            efficiency_reward = 0.5 * brevity
-        # Unexecutable: no efficiency reward (keep 0)
+    if pred_sql and os.path.exists(db_path):
+        efficiency_reward = _compute_efficiency_reward(db_path, pred_sql, gold_sql, exec_status)
 
     accuracy_reward = format_score + exec_score + result_score
 
