@@ -1,18 +1,39 @@
-accelerate
-codetiming
-datasets
-dill
-flash-attn
-hydra-core
-ijson
-numpy
-nltk
-pandas
-pybind11
-ray
-tensordict<0.6
-transformers<4.48
-vllm==0.6.3
-wandb
-func_timeout
-sqlparse
+# --- Core Hardware Stack (Pinned to Torch 2.4.0 + CUDA 12.1) ---
+# Note: Install these via the install.sh script to get the CUDA 12.1 wheels
+torch==2.4.0
+torchvision==0.19.0
+torchaudio==2.4.0
+
+# --- The Heavy Hitters (LLM Engine) ---
+vllm==0.6.3                  # Anchor requirement
+flash-attn==2.6.3            # Matches Torch 2.4.0
+transformers==4.46.3         # Added: Critical for Tokenizers/Models
+accelerate==0.34.2           # Stable with Torch 2.4
+
+# --- Distributed & Data ---
+ray==2.37.0                  # Added: Required for vLLM distributed execution
+tensordict==0.5.0            # Compatible with Torch 2.4
+numpy==1.26.4                # CRITICAL: Pinned < 2.0 (vLLM crashes with Numpy 2.x)
+pandas==2.2.2                # Added: Required for data processing
+datasets==3.0.1              # Added: Required for loading HF datasets
+dill==0.3.8                  # Added: Required for Ray serialization
+hf-transfer==0.1.9           # High-speed model downloader
+
+# --- SQL-R1 Utilities ---
+hydra-core==1.3.2
+ijson==3.3.0
+nltk==3.9.1
+pybind11==2.13.6
+wandb==0.24.2
+func-timeout==4.3.5
+sqlparse==0.5.1
+codetiming==1.4.0
+python-dotenv==1.2.1
+inquirerpy==0.3.4
+opencv-python-headless==4.11.0.86
+
+# --- Low-Level System/Async (vLLM Dependencies) ---
+uvloop==0.22.1
+httptools==0.7.1
+watchfiles==1.1.1
+websockets==16.0

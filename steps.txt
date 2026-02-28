@@ -1,0 +1,50 @@
+# 1. Update and get system essentials
+apt update && apt install -y git git-lfs python3-pip wget unzip  	 pv build-essential ninja-build
+git lfs install
+
+# 2. Persistent mount & Venv
+cd /workspace
+python3 -m venv /workspace/venv
+source /workspace/venv/bin/activate
+
+# Optimize Pip
+pip config set global.index-url https://pypi.org/simple
+pip install --upgrade pip wheel setuptools
+
+# 3. Clone SQL-R1-MORL2
+cd /workspace
+git clone <your-repo-url> SQL-R1-MORL2
+cd SQL-R1-MORL2
+
+# 4. Install Dependencies
+# (Assumes you have committed the correct install.sh and requirements.txt)
+sh install.sh
+
+# 5. Fast Model Download
+export HF_HUB_ENABLE_HF_TRANSFER=1
+hf auth login
+export HF_HOME="/workspace/hf_cache"
+hf download Qwen/Qwen2.5-Coder-7B-Instruct \
+    --local-dir models/Qwen2.5-Coder-7B-Instruct \
+    --exclude "*.pt" \
+    --exclude "*.bin"
+
+# 6. Data Setup
+mkdir -p data
+mkdir -p /workspace/temp_data
+hf download seeklhy/OmniSQL-datasets data.zip --repo-type dataset --local-dir /workspace/temp_data
+
+# Unzip with progress bar
+pv /workspace/temp_data/data.zip | unzip -q -d /workspace/synsql_data
+
+# Symlink
+mkdir -p /workspace/SQL-R1-MORL2/data/NL2SQL/SynSQL-2.5M/
+ln -s /workspace/synsql_data/data/SynSQL-2.5M/databases /workspace/SQL-R1-MORL2/data/NL2SQL/SynSQL-2.5M/databases
+
+pip install --upgrade wandb
+wandb login --relogin
+
+sh env.sh
+
+# 7. Final Sanity Check
+python -c "import torch; print(f'CUDA Available: {torch.cuda.is_available()} | Device Count: {torch.cuda.device_count()}')"

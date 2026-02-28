@@ -32,6 +32,7 @@ actor_rollout_ref:
     kl_loss_type: low_var_kl # for grpo
     ppo_epochs: 1
     shuffle: False
+    enable_pc_grad: False
     ulysses_sequence_parallel_size: 1 # sp size
     optim:
       lr: 1e-6
