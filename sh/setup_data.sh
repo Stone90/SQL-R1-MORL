@@ -58,7 +58,9 @@ TEST_FILE="$DATA_DIR/test.parquet"
 
 banner "Step 2/4: Download Training Data"
 
-if [ -f "$TRAIN_FILE" ] && [ -f "$TEST_FILE" ]; then
+TRAIN_SIZE=$(stat -c%s "$TRAIN_FILE" 2>/dev/null || echo 0)
+TEST_SIZE=$(stat -c%s "$TEST_FILE" 2>/dev/null || echo 0)
+if [ "$TRAIN_SIZE" -gt 1000 ] && [ "$TEST_SIZE" -gt 1000 ]; then
     ok "Training data already exists at $DATA_DIR — skipping download"
     info "train.parquet: $(du -h "$TRAIN_FILE" | cut -f1)"
     info "test.parquet:  $(du -h "$TEST_FILE" | cut -f1)"
@@ -90,9 +92,10 @@ fi
 # ── 3. Databases: SynSQL SQLite files (for reward computation) ──
 banner "Step 3/4: Download SQLite Databases"
 
-if [ -d "$DB_DIR" ] && [ "$(ls -A "$DB_DIR" 2>/dev/null)" ]; then
+DB_COUNT=$(find "$DB_DIR" -name "*.sqlite" 2>/dev/null | head -1)
+if [ -n "$DB_COUNT" ]; then
     ok "Databases already exist at $DB_DIR — skipping download"
-    info "Database count: $(ls -d "$DB_DIR"/*/ 2>/dev/null | wc -l) databases"
+    info "Database count: $(find "$DB_DIR" -name "*.sqlite" | wc -l) databases"
 else
     step "Downloading SynSQL SQLite databases from HuggingFace (OmniSQL-datasets)..."
     info "These are needed for execution-based reward (EXPLAIN QUERY PLAN)"
@@ -214,6 +217,13 @@ for split in ['train', 'test']:
     elapsed = time.time() - t0
 
     if drop_indices:
+        if len(drop_indices) == orig_len:
+            print(f"    {RED}✗{RESET} [{BOLD}{split}{RESET}] ALL {orig_len:,} samples failed — skipping overwrite (likely a setup issue, not bad data)")
+            for reason, count in errors.items():
+                if count > 0:
+                    print(f"           {reason}: {count:,}")
+            print(f"    {YELLOW}→{RESET} Check that databases are downloaded and extracted to {db_dir}")
+            sys.exit(1)
         df_clean = df.drop(index=drop_indices).reset_index(drop=True)
         df_clean.to_parquet(path, index=False)
         print(f"    {RED}✗{RESET} [{BOLD}{split}{RESET}] Dropped {len(drop_indices):,}/{orig_len:,} bad samples → {GREEN}{len(df_clean):,}{RESET} remaining ({elapsed:.1f}s)")
