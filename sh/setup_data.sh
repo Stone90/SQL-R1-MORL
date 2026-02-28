@@ -98,12 +98,8 @@ else
     mkdir -p "$DB_DIR"
     DB_TMP="$PROJ_DIR/.db_download"
     hf download "seeklhy/OmniSQL-datasets" data.zip --repo-type dataset --local-dir "$DB_TMP"
-    step "Extracting databases from data.zip..."
-    if command -v pv &>/dev/null; then
-        pv "$DB_TMP/data.zip" | unzip -q -d "$DB_TMP/extracted" -
-    else
-        unzip -q "$DB_TMP/data.zip" -d "$DB_TMP/extracted"
-    fi
+    step "Extracting databases from data.zip (this may take a while)..."
+    unzip -q "$DB_TMP/data.zip" -d "$DB_TMP/extracted"
     # Zip contains data/SynSQL-2.5M/databases/{db_id}/{db_id}.sqlite
     SYNSQL_DB="$DB_TMP/extracted/data/SynSQL-2.5M/databases"
     if [ ! -d "$SYNSQL_DB" ]; then
