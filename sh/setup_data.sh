@@ -63,12 +63,25 @@ if [ -f "$TRAIN_FILE" ] && [ -f "$TEST_FILE" ]; then
     info "train.parquet: $(du -h "$TRAIN_FILE" | cut -f1)"
     info "test.parquet:  $(du -h "$TEST_FILE" | cut -f1)"
 else
-    step "Downloading SynSQL training data from HuggingFace..."
+    step "Downloading SynSQL-Complex-5K training data from HuggingFace..."
     mkdir -p "$DATA_DIR"
     if ! command -v huggingface-cli &>/dev/null; then
         pip install -q huggingface_hub
     fi
-    huggingface-cli download "StoneLin/SQL-R1-Data" --repo-type dataset --local-dir "$DATA_DIR"
+    HF_DATA_TMP="$DATA_DIR/.hf_download"
+    huggingface-cli download "MPX0222forHF/SynSQL-Complex-5K" --repo-type dataset --local-dir "$HF_DATA_TMP"
+    # HF datasets store parquets in subdirs — find and copy them
+    TRAIN_PQ=$(find "$HF_DATA_TMP" -name "*train*.parquet" | head -1)
+    TEST_PQ=$(find "$HF_DATA_TMP" -name "*test*.parquet" | head -1)
+    if [ -z "$TRAIN_PQ" ] || [ -z "$TEST_PQ" ]; then
+        fail "Could not find train/test parquet files in downloaded dataset"
+        info "Contents of $HF_DATA_TMP:"
+        find "$HF_DATA_TMP" -type f
+        exit 1
+    fi
+    cp "$TRAIN_PQ" "$TRAIN_FILE"
+    cp "$TEST_PQ" "$TEST_FILE"
+    rm -rf "$HF_DATA_TMP"
     ok "Training data downloaded to $DATA_DIR"
     info "train.parquet: $(du -h "$TRAIN_FILE" | cut -f1)"
     info "test.parquet:  $(du -h "$TEST_FILE" | cut -f1)"
@@ -81,14 +94,34 @@ if [ -d "$DB_DIR" ] && [ "$(ls -A "$DB_DIR" 2>/dev/null)" ]; then
     ok "Databases already exist at $DB_DIR — skipping download"
     info "Database count: $(ls -d "$DB_DIR"/*/ 2>/dev/null | wc -l) databases"
 else
-    step "Downloading SynSQL SQLite databases from HuggingFace..."
+    step "Downloading SynSQL SQLite databases from HuggingFace (OmniSQL-datasets)..."
     info "These are needed for execution-based reward (EXPLAIN QUERY PLAN)"
+    info "This download is large — 16,583 databases in data.zip"
     mkdir -p "$DB_DIR"
     if ! command -v huggingface-cli &>/dev/null; then
         pip install -q huggingface_hub
     fi
-    huggingface-cli download "StoneLin/SQL-R1-Databases" --repo-type dataset --local-dir "$DB_DIR"
-    ok "Databases downloaded to $DB_DIR"
+    DB_TMP="$DB_DIR/.hf_download"
+    huggingface-cli download "seeklhy/OmniSQL-datasets" data.zip --repo-type dataset --local-dir "$DB_TMP"
+    step "Extracting databases from data.zip..."
+    unzip -q "$DB_TMP/data.zip" -d "$DB_TMP/extracted"
+    # Find the SynSQL database directory (contains {db_id}/{db_id}.sqlite)
+    SYNSQL_DB=$(find "$DB_TMP/extracted" -type d -name "SynSQL*" | head -1)
+    if [ -z "$SYNSQL_DB" ]; then
+        # Fall back: look for any directory containing .sqlite files
+        SYNSQL_DB=$(dirname "$(find "$DB_TMP/extracted" -name "*.sqlite" -print -quit)")
+        SYNSQL_DB=$(dirname "$SYNSQL_DB")  # go up one level to parent of {db_id}/
+    fi
+    if [ -z "$SYNSQL_DB" ] || [ ! -d "$SYNSQL_DB" ]; then
+        fail "Could not find SynSQL databases in extracted archive"
+        info "Contents of extracted archive:"
+        find "$DB_TMP/extracted" -maxdepth 3 -type d
+        exit 1
+    fi
+    # Move database subdirectories into DB_DIR
+    cp -r "$SYNSQL_DB"/*/ "$DB_DIR/" 2>/dev/null || mv "$SYNSQL_DB"/* "$DB_DIR/"
+    rm -rf "$DB_TMP"
+    ok "Databases extracted to $DB_DIR"
     info "Database count: $(ls -d "$DB_DIR"/*/ 2>/dev/null | wc -l) databases"
 fi
 
