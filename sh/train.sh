@@ -20,6 +20,8 @@ RUN_ID=7B
 GPU_ENV=2xA100
 MODEL_ENV=Qwen2.5-Coder-7B-Instruct
 PROJECT_NAME=SQL-R1-MORL
+NUM_CASES=${NUM_CASES:-1000}        # number of training cases to run (default: 1000)
+TRAIN_BATCH_SIZE=16
 
 # Paths
 LOG_PATH=logs/$PROJECT_NAME
@@ -100,10 +102,17 @@ for split, path in [('Train', '$DATA_DIR_PATH/train.parquet'), ('Test', '$DATA_D
     print()
 "
 
+# ── Compute training steps ──
+TOTAL_TRAINING_STEPS=$(( NUM_CASES / TRAIN_BATCH_SIZE ))
+if [ $TOTAL_TRAINING_STEPS -lt 1 ]; then
+    TOTAL_TRAINING_STEPS=1
+fi
+
 # ── Training config summary ──
 echo "${GREEN}>>>${RESET} ${BOLD}Training Config${RESET}"
 echo "    ${YELLOW}→${RESET} Algorithm:    GRPO + PC-Grad (MORL)"
-echo "    ${YELLOW}→${RESET} Batch size:   16 (mini=4, micro=1)"
+echo "    ${YELLOW}→${RESET} Cases:        $NUM_CASES → $TOTAL_TRAINING_STEPS steps"
+echo "    ${YELLOW}→${RESET} Batch size:   $TRAIN_BATCH_SIZE (mini=4, micro=1)"
 echo "    ${YELLOW}→${RESET} Learning rate: 2e-7"
 echo "    ${YELLOW}→${RESET} KL loss:      low_var_kl (coef=0.001)"
 echo "    ${YELLOW}→${RESET} Rollout:      n=2, temp=0.7, vLLM (gpu_mem=0.5)"
@@ -122,7 +131,7 @@ python -m verl.trainer.main_ppo \
     algorithm.adv_estimator=grpo \
     data.train_files=$DATA_DIR_PATH/train.parquet \
     data.val_files=$DATA_DIR_PATH/test.parquet \
-    data.train_batch_size=16 \
+    data.train_batch_size=$TRAIN_BATCH_SIZE \
     data.val_batch_size=8 \
     data.max_prompt_length=4096 \
     data.max_response_length=2048 \
@@ -159,4 +168,5 @@ python -m verl.trainer.main_ppo \
     trainer.default_hdfs_dir=null \
     trainer.save_freq=100 \
     trainer.test_freq=100 \
+    trainer.total_training_steps=$TOTAL_TRAINING_STEPS \
     trainer.total_epochs=1 $@ 2>&1 | tee $LOG_PATH/$MODEL_ENV/grpo.log
