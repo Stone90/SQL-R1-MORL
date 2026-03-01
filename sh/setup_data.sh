@@ -58,7 +58,8 @@ banner "Step 2/4: Download Training Data"
 
 TRAIN_SIZE=$(stat -c%s "$TRAIN_FILE" 2>/dev/null || echo 0)
 TEST_SIZE=$(stat -c%s "$TEST_FILE" 2>/dev/null || echo 0)
-if [ "$TRAIN_SIZE" -gt 1000 ] && [ "$TEST_SIZE" -gt 1000 ]; then
+# Real files are ~15M and ~3.7M; empty parquets with just schema are a few KB
+if [ "$TRAIN_SIZE" -gt 100000 ] && [ "$TEST_SIZE" -gt 100000 ]; then
     ok "Training data already exists at $DATA_DIR — skipping download"
     info "train.parquet: $(du -h "$TRAIN_FILE" | cut -f1)"
     info "test.parquet:  $(du -h "$TEST_FILE" | cut -f1)"
