@@ -398,6 +398,7 @@ class DataParallelPPOActor(BasePPOActor):
 
                 append_to_dict(metrics, {'actor/entropy_loss': entropy_loss.detach().item()})
 
+            torch.cuda.empty_cache()
             grad_norm = self._optimizer_step()
             append_to_dict(metrics, {'actor/grad_norm': grad_norm.detach().item()})
 
