@@ -51,6 +51,9 @@ ok "Flash Attention installed"
 banner "Step 5/7: Python Dependencies"
 step "Installing requirements.txt (vLLM, Ray, transformers, wandb, etc.)..."
 pip install -r "$PROJ_DIR/requirements.txt"
+
+step "Installing verl package in editable mode..."
+pip install -e "$PROJ_DIR"
 ok "All Python dependencies installed"
 
 # ── 6. Wandb login ──
