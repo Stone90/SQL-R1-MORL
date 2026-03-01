@@ -229,7 +229,8 @@ class ActorRolloutRefWorker(Worker):
             actor_optimizer = optim.AdamW(actor_module_fsdp.parameters(),
                                           lr=optim_config.lr,
                                           betas=optim_config.get('betas', (0.9, 0.999)),
-                                          weight_decay=optim_config.get('weight_decay', 1e-2))
+                                          weight_decay=optim_config.get('weight_decay', 1e-2),
+                                          foreach=False)
 
             total_steps = optim_config.get('total_training_steps', 0)
             num_warmup_steps_ratio = optim_config.get('lr_warmup_steps_ratio', 0.)
@@ -357,12 +358,6 @@ class ActorRolloutRefWorker(Worker):
         data = data.to('cuda')
 
         assert self._is_actor
-        # Offload ref model to free GPU memory for actor training
-        if self._is_ref and hasattr(self, 'ref_module_fsdp'):
-            offload_fsdp_param_and_grad(module=self.ref_module_fsdp, offload_grad=False)
-            torch.cuda.empty_cache()
-            log_gpu_memory_usage('After ref model offload in update_actor', logger=logger)
-
         if self._is_offload_param:
             load_fsdp_param_and_grad(module=self.actor_module_fsdp,
                                      device_id=torch.cuda.current_device(),
@@ -400,11 +395,6 @@ class ActorRolloutRefWorker(Worker):
             offload_fsdp_param_and_grad(module=self.actor_module_fsdp, offload_grad=self._is_offload_grad)
         if self._is_offload_optimizer:
             offload_fsdp_optimizer(optimizer=self.actor_optimizer)
-        # Reload ref model after actor training
-        if self._is_ref and hasattr(self, 'ref_module_fsdp'):
-            load_fsdp_param_and_grad(module=self.ref_module_fsdp,
-                                     device_id=torch.cuda.current_device(),
-                                     load_grad=False)
         torch.cuda.empty_cache()
         return output
 
