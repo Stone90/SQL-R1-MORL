@@ -125,6 +125,9 @@ else
     info "Database count: $(ls -d "$DB_DIR"/*/ 2>/dev/null | wc -l) databases"
 fi
 
+export SYNSQL_DB_DIR="$DB_DIR"
+ok "SYNSQL_DB_DIR=$DB_DIR"
+
 # ── 4. Data cleaning: validate gold SQL runs against databases ──
 banner "Step 4/4: Validate Data Integrity"
 step "Checking that every gold SQL query executes against its database..."
