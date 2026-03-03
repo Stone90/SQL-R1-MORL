@@ -238,8 +238,8 @@ class DataParallelPPOActor(BasePPOActor):
         self.actor_module.train()
 
         assert self.config.ppo_mini_batch_size % self.config.ppo_micro_batch_size == 0
-        self.gradient_accumulation = self.config.ppo_mini_batch_size // self.config.ppo_micro_batch_size
         temperature = data.meta_info['temperature']
+        use_dynamic_bsz = self.config.get('use_dynamic_bsz', False)
 
         select_keys = ['responses', 'input_ids', 'attention_mask', 'position_ids', 'old_log_probs', 'advantages']
         if "accuracy_rewards" in data.batch:
@@ -252,7 +252,12 @@ class DataParallelPPOActor(BasePPOActor):
         metrics = {}
 
         for batch_idx, mini_batch in enumerate(dataloader):
-            micro_batches = mini_batch.split(self.config.ppo_micro_batch_size)
+            if use_dynamic_bsz:
+                max_token_len = self.config.ppo_max_token_len_per_gpu * self.ulysses_sequence_parallel_size
+                micro_batches, _ = rearrange_micro_batches(batch=mini_batch, max_token_len=max_token_len)
+            else:
+                micro_batches = mini_batch.split(self.config.ppo_micro_batch_size)
+            self.gradient_accumulation = len(micro_batches)
             self.actor_optimizer.zero_grad()
 
             for data_micro in micro_batches:
