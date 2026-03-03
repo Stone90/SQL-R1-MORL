@@ -7,7 +7,7 @@ fi
 # Auto-activate venv if present
 VENV_PATH="${VENV_PATH:-$(cd "$(dirname "$0")/.." && pwd)/.venv}"
 if [ -f "$VENV_PATH/bin/activate" ]; then
-    source "$VENV_PATH/bin/activate"
+    . "$VENV_PATH/bin/activate"
 fi
 
 export VLLM_ATTENTION_BACKEND=XFORMERS

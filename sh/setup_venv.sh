@@ -61,7 +61,7 @@ if [ "$FORCE" -eq 1 ] && [ -d "$VENV_PATH" ]; then
 fi
 step "Creating venv at $VENV_PATH..."
 python3 -m venv "$VENV_PATH"
-source "$VENV_PATH/bin/activate"
+. "$VENV_PATH/bin/activate"
 ok "Venv created and activated"
 
 # ── Pip bootstrap ──
