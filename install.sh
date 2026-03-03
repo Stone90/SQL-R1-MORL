@@ -22,7 +22,7 @@ banner "SQL-R1-MORL Full Install"
 # ── 1. System essentials ──
 banner "Step 1/7: System Packages"
 step "Installing system dependencies..."
-apt update && apt install -y git git-lfs python3-pip wget unzip pv build-essential ninja-build
+apt update && apt install -y git git-lfs python3-pip wget unzip pv build-essential ninja-build tmux
 git lfs install
 ok "System packages installed"
 

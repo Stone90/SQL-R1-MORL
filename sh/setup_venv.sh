@@ -37,6 +37,13 @@ if [ -f "$VENV_PATH/bin/activate" ] && [ "$FORCE" -eq 0 ]; then
     exit 0
 fi
 
+# ── System packages ──
+banner "Step 0/6: System Packages"
+step "Installing system dependencies..."
+apt update && apt install -y git git-lfs python3-pip wget unzip pv build-essential ninja-build tmux
+git lfs install
+ok "System packages installed"
+
 # ── Validate Python version ──
 banner "Step 1/6: Validate Python"
 PYTHON_VER=$(python3 --version 2>&1 | grep -oP '\d+\.\d+')
