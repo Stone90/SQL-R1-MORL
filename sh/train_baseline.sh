@@ -117,7 +117,7 @@ fi
 # ── Training config summary ──
 echo "${GREEN}>>>${RESET} ${BOLD}Training Config${RESET}"
 echo "    ${YELLOW}→${RESET} Algorithm:    GRPO (baseline, NO PC-Grad)"
-echo "    ${YELLOW}→${RESET} Batch size:   16 (mini=4, micro=2)"
+echo "    ${YELLOW}→${RESET} Batch size:   16 (mini=4, micro=1)"
 echo "    ${YELLOW}→${RESET} Learning rate: 2e-7"
 echo "    ${YELLOW}→${RESET} KL loss:      low_var_kl (coef=0.001)"
 echo "    ${YELLOW}→${RESET} Cases:        $NUM_CASES → $TOTAL_TRAINING_STEPS steps"
@@ -145,7 +145,7 @@ python -m verl.trainer.main_ppo \
     actor_rollout_ref.actor.optim.lr=2e-7 \
     actor_rollout_ref.model.use_remove_padding=True \
     actor_rollout_ref.actor.ppo_mini_batch_size=4 \
-    actor_rollout_ref.actor.ppo_micro_batch_size=2 \
+    actor_rollout_ref.actor.ppo_micro_batch_size=1 \
     actor_rollout_ref.actor.use_kl_loss=True \
     actor_rollout_ref.actor.kl_loss_coef=0.001 \
     actor_rollout_ref.actor.kl_loss_type=low_var_kl \
