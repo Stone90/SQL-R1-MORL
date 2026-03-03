@@ -115,7 +115,7 @@ echo "    ${YELLOW}→${RESET} Batch size:   16 (mini=4, micro=2)"
 echo "    ${YELLOW}→${RESET} Learning rate: 2e-7"
 echo "    ${YELLOW}→${RESET} KL loss:      low_var_kl (coef=0.001)"
 echo "    ${YELLOW}→${RESET} Cases:        $NUM_CASES → $TOTAL_TRAINING_STEPS steps"
-echo "    ${YELLOW}→${RESET} Rollout:      n=16, temp=0.7, vLLM (gpu_mem=0.6)"
+echo "    ${YELLOW}→${RESET} Rollout:      n=16, temp=0.7, vLLM (gpu_mem=0.5)"
 echo "    ${YELLOW}→${RESET} FSDP:         size=2, grad_ckpt=False"
 echo "    ${YELLOW}→${RESET} Save/test:    every 100 steps"
 echo ""
@@ -151,7 +151,7 @@ python -m verl.trainer.main_ppo \
     actor_rollout_ref.rollout.log_prob_micro_batch_size=4 \
     actor_rollout_ref.rollout.tensor_model_parallel_size=1 \
     actor_rollout_ref.rollout.name=vllm \
-    actor_rollout_ref.rollout.gpu_memory_utilization=0.6 \
+    actor_rollout_ref.rollout.gpu_memory_utilization=0.5 \
     actor_rollout_ref.rollout.n=16 \
     actor_rollout_ref.rollout.temperature=0.7 \
     actor_rollout_ref.ref.log_prob_micro_batch_size=4 \
