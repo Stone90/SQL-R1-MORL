@@ -4,6 +4,12 @@ if [ -f .env ]; then
     export $(grep -v '^#' .env | xargs)
 fi
 
+# Auto-activate venv if present
+VENV_PATH="${VENV_PATH:-$(cd "$(dirname "$0")/.." && pwd)/.venv}"
+if [ -f "$VENV_PATH/bin/activate" ]; then
+    source "$VENV_PATH/bin/activate"
+fi
+
 export VLLM_ATTENTION_BACKEND=XFORMERS
 export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
 export MALLOC_TRIM_THRESHOLD_=0

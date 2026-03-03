@@ -6,6 +6,12 @@ set -e
 # Usage: sh sh/setup_data.sh
 
 PROJ_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+
+# Auto-activate venv if present
+VENV_PATH="${VENV_PATH:-$PROJ_DIR/.venv}"
+if [ -f "$VENV_PATH/bin/activate" ]; then
+    source "$VENV_PATH/bin/activate"
+fi
 MODEL_DIR="$PROJ_DIR/models"
 DATA_DIR="$PROJ_DIR/data"
 DB_DIR="$PROJ_DIR/databases"
