@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project
 
-SQL-R1-MORL extends the SQL-R1 paper (NeurIPS 2025) with Multi-Objective Reinforcement Learning. It trains a Qwen2.5-Coder-7B-Instruct model to generate SQL from natural language, optimizing two objectives simultaneously — accuracy and efficiency — using PC-Grad gradient projection within the GRPO algorithm. Built on ByteDance's verl RL framework.
+SQL-R1-MORL extends the SQL-R1 paper (NeurIPS 2025) with Multi-Objective Reinforcement Learning. It trains a SQL-R1-3B model to generate SQL from natural language, optimizing two objectives simultaneously — accuracy and efficiency — using PC-Grad gradient projection within the GRPO algorithm. Built on ByteDance's verl RL framework.
 
 ## Commands
 
@@ -38,7 +38,7 @@ Training entry point: `python -m verl.trainer.main_ppo` with Hydra config overri
 
 `verl/trainer/main_ppo.py` → creates `RewardManager` + workers → `RayPPOTrainer.fit()`
 
-1. **Rollout**: vLLM generates n=2 SQL responses per prompt
+1. **Rollout**: vLLM generates n=16 SQL responses per prompt
 2. **Reward**: `RewardManager` calls `synsql.compute_score()` → returns (accuracy, efficiency) per sample
 3. **Advantage**: GRPO normalizes rewards within each prompt group, separately per objective
 4. **Actor update**: Two forward passes (one per objective), gradients combined via PC-Grad projection
