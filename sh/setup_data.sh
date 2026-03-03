@@ -30,21 +30,21 @@ info "Model dir:   $MODEL_DIR"
 info "Data dir:    $DATA_DIR"
 info "DB dir:      $DB_DIR"
 
-# ── 1. Model: Qwen2.5-Coder-7B-Instruct ──
-MODEL_NAME="Qwen2.5-Coder-7B-Instruct"
+# ── 1. Model: SQL-R1-3B (cold-start with SQL-tuned model) ──
+MODEL_NAME="SQL-R1-3B"
 MODEL_PATH="$MODEL_DIR/$MODEL_NAME"
 
-banner "Step 1/4: Download Model ($MODEL_NAME)"
+banner "Step 1/5: Download Model ($MODEL_NAME)"
 
 if [ -d "$MODEL_PATH" ] && [ "$(ls -A "$MODEL_PATH" 2>/dev/null)" ]; then
     ok "Model already exists at $MODEL_PATH — skipping download"
     info "Files: $(ls "$MODEL_PATH"/*.safetensors 2>/dev/null | wc -l) safetensor shards"
 else
-    step "Downloading $MODEL_NAME from HuggingFace (~15 GB)..."
-    info "This may take 5-30 minutes depending on connection speed"
+    step "Downloading $MODEL_NAME from HuggingFace (~6 GB)..."
+    info "This may take 5-15 minutes depending on connection speed"
     mkdir -p "$MODEL_DIR"
     export HF_HUB_ENABLE_HF_TRANSFER=1
-    hf download "Qwen/$MODEL_NAME" --local-dir "$MODEL_PATH" \
+    hf download "MPX0222forHF/$MODEL_NAME" --local-dir "$MODEL_PATH" \
         --exclude "*.pt" --exclude "*.bin"
     ok "Model downloaded to $MODEL_PATH"
     info "Files: $(ls "$MODEL_PATH"/*.safetensors 2>/dev/null | wc -l) safetensor shards"
@@ -54,7 +54,7 @@ fi
 TRAIN_FILE="$DATA_DIR/train.parquet"
 TEST_FILE="$DATA_DIR/test.parquet"
 
-banner "Step 2/4: Download Training Data"
+banner "Step 2/5: Download Training Data"
 
 TRAIN_SIZE=$(stat -c%s "$TRAIN_FILE" 2>/dev/null || echo 0)
 TEST_SIZE=$(stat -c%s "$TEST_FILE" 2>/dev/null || echo 0)
@@ -86,7 +86,7 @@ else
 fi
 
 # ── 3. Databases: SynSQL SQLite files (for reward computation) ──
-banner "Step 3/4: Download SQLite Databases"
+banner "Step 3/5: Download SQLite Databases"
 
 DB_COUNT=$(find "$DB_DIR" -name "*.sqlite" 2>/dev/null | head -1)
 if [ -n "$DB_COUNT" ]; then
@@ -130,7 +130,7 @@ export SYNSQL_DB_DIR="$DB_DIR"
 ok "SYNSQL_DB_DIR=$DB_DIR"
 
 # ── 4. Data cleaning: validate gold SQL runs against databases ──
-banner "Step 4/4: Validate Data Integrity"
+banner "Step 4/5: Validate Data Integrity"
 step "Checking that every gold SQL query executes against its database..."
 info "This ensures no bad samples corrupt training rewards"
 
@@ -233,6 +233,42 @@ for split in ['train', 'test']:
                 print(f"           {reason}: {count:,}")
     else:
         print(f"    {GREEN}✓{RESET} [{BOLD}{split}{RESET}] All {orig_len:,} samples valid ({elapsed:.1f}s)")
+PYEOF
+
+# ── 5. Curriculum sorting: order training data by proxy complexity ──
+banner "Step 5/5: Curriculum Sort (Easy → Hard)"
+step "Sorting training data by proxy complexity (JOINs + subqueries + SQL length)..."
+
+python3 - "$DATA_DIR" <<'PYEOF'
+import sys, os
+import pandas as pd
+
+data_dir = sys.argv[1]
+path = os.path.join(data_dir, 'train.parquet')
+
+GREEN = '\033[1;32m'
+YELLOW = '\033[1;33m'
+BOLD = '\033[1m'
+RESET = '\033[0m'
+
+df = pd.read_parquet(path)
+df['_joins'] = df['sql'].str.upper().str.count(' JOIN ')
+df['_subq'] = df['sql'].str.upper().str.count('SELECT') - 1
+df['_len'] = df['sql'].str.len()
+max_len = df['_len'].max()
+df['_complexity'] = df['_joins'] + df['_subq'] + df['_len'] / max_len
+
+df = df.sort_values('_complexity').drop(columns=['_joins', '_subq', '_len', '_complexity']).reset_index(drop=True)
+df.to_parquet(path, index=False)
+
+# Show distribution
+print(f"    {GREEN}✓{RESET} Sorted {len(df):,} samples by complexity (easy → hard)")
+# Show first/last examples
+for label, idx in [('Easiest', 0), ('Hardest', len(df)-1)]:
+    sql = df.iloc[idx]['sql']
+    joins = sql.upper().count(' JOIN ')
+    subq = sql.upper().count('SELECT') - 1
+    print(f"    {YELLOW}→{RESET} {label}: {len(sql)} chars, {joins} JOINs, {subq} subqueries")
 PYEOF
 
 # ── Summary ──

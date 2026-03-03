@@ -16,11 +16,11 @@ export NCCL_TIMEOUT=1800
 DATA_DIR_PATH=data
 
 # Environment Variables
-RUN_ID=7B
+RUN_ID=3B
 GPU_ENV=2xA100
-MODEL_ENV=Qwen2.5-Coder-7B-Instruct
+MODEL_ENV=SQL-R1-3B
 PROJECT_NAME=SQL-R1-MORL
-NUM_CASES=${NUM_CASES:-1000}        # number of training cases to run (default: 1000)
+NUM_CASES=${NUM_CASES:-1024}        # number of training cases to run (default: 1024)
 TRAIN_BATCH_SIZE=16
 
 # Paths
@@ -115,7 +115,7 @@ echo "    ${YELLOW}→${RESET} Cases:        $NUM_CASES → $TOTAL_TRAINING_STEP
 echo "    ${YELLOW}→${RESET} Batch size:   $TRAIN_BATCH_SIZE (mini=4, micro=1)"
 echo "    ${YELLOW}→${RESET} Learning rate: 2e-7"
 echo "    ${YELLOW}→${RESET} KL loss:      low_var_kl (coef=0.001)"
-echo "    ${YELLOW}→${RESET} Rollout:      n=2, temp=0.7, vLLM (gpu_mem=0.5)"
+echo "    ${YELLOW}→${RESET} Rollout:      n=16, temp=0.7, vLLM (gpu_mem=0.5)"
 echo "    ${YELLOW}→${RESET} FSDP:         size=2, grad_ckpt=True"
 echo "    ${YELLOW}→${RESET} Save/test:    every 100 steps"
 echo ""
@@ -148,13 +148,13 @@ python -m verl.trainer.main_ppo \
     actor_rollout_ref.actor.fsdp_config.param_offload=False \
     actor_rollout_ref.actor.fsdp_config.grad_offload=False \
     actor_rollout_ref.actor.fsdp_config.optimizer_offload=True \
-    actor_rollout_ref.rollout.log_prob_micro_batch_size=4 \
+    actor_rollout_ref.rollout.log_prob_micro_batch_size=2 \
     actor_rollout_ref.rollout.tensor_model_parallel_size=1 \
     actor_rollout_ref.rollout.name=vllm \
-    actor_rollout_ref.rollout.gpu_memory_utilization=0.4 \
-    actor_rollout_ref.rollout.n=2 \
+    actor_rollout_ref.rollout.gpu_memory_utilization=0.5 \
+    actor_rollout_ref.rollout.n=16 \
     actor_rollout_ref.rollout.temperature=0.7 \
-    actor_rollout_ref.ref.log_prob_micro_batch_size=4 \
+    actor_rollout_ref.ref.log_prob_micro_batch_size=2 \
     actor_rollout_ref.ref.fsdp_config.param_offload=False \
     actor_rollout_ref.actor.enable_pc_grad=True \
     algorithm.kl_ctrl.kl_coef=0.001 \
