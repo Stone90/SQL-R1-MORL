@@ -123,7 +123,7 @@ echo "    ${YELLOW}→${RESET} KL loss:      low_var_kl (coef=0.001)"
 echo "    ${YELLOW}→${RESET} Cases:        $NUM_CASES → $TOTAL_TRAINING_STEPS steps"
 echo "    ${YELLOW}→${RESET} Rollout:      n=16, temp=0.7, vLLM (gpu_mem=0.5)"
 echo "    ${YELLOW}→${RESET} Dynamic bsz:  max_token_len=16384/gpu"
-echo "    ${YELLOW}→${RESET} FSDP:         size=2"
+echo "    ${YELLOW}→${RESET} FSDP:         size=2, grad_ckpt=True"
 echo "    ${YELLOW}→${RESET} Save/test:    every 100 steps"
 echo ""
 
@@ -153,7 +153,7 @@ python -m verl.trainer.main_ppo \
     actor_rollout_ref.actor.kl_loss_coef=0.001 \
     actor_rollout_ref.actor.kl_loss_type=low_var_kl \
     actor_rollout_ref.actor.fsdp_config.fsdp_size=2 \
-    actor_rollout_ref.model.enable_gradient_checkpointing=False \
+    actor_rollout_ref.model.enable_gradient_checkpointing=True \
     actor_rollout_ref.actor.fsdp_config.param_offload=False \
     actor_rollout_ref.actor.fsdp_config.grad_offload=False \
     actor_rollout_ref.actor.fsdp_config.optimizer_offload=False \
