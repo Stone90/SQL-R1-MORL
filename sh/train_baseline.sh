@@ -1,4 +1,4 @@
-# SQL-R1-MORL Training (PC-Grad enabled)
+# SQL-R1-MORL Baseline Training (PC-Grad DISABLED — single-objective accuracy only)
 # Load WANDB_API_KEY from .env if present
 if [ -f .env ]; then
     export $(grep -v '^#' .env | xargs)
@@ -22,7 +22,7 @@ export NCCL_TIMEOUT=1800
 DATA_DIR_PATH=data
 
 # Environment Variables
-RUN_ID=3B
+RUN_ID=3B-baseline
 GPU_ENV=2xA100
 MODEL_ENV=SQL-R1-3B
 PROJECT_NAME=SQL-R1-MORL
@@ -44,7 +44,7 @@ RESET='\033[0m'
 
 echo ""
 echo "${CYAN}╔══════════════════════════════════════════════════════╗${RESET}"
-echo "${CYAN}║${RESET}  ${BOLD}SQL-R1-MORL Training (PC-Grad MORL)${RESET}"
+echo "${CYAN}║${RESET}  ${BOLD}SQL-R1-MORL Baseline (Single-Objective, No PC-Grad)${RESET}"
 echo "${CYAN}╚══════════════════════════════════════════════════════╝${RESET}"
 echo ""
 
@@ -74,7 +74,7 @@ else
 fi
 
 echo "    ${GREEN}✓${RESET} Experiment: $EXPERIMENT_NAME"
-echo "    ${GREEN}✓${RESET} Logs: $LOG_PATH/$MODEL_ENV/grpo.log"
+echo "    ${GREEN}✓${RESET} Logs: $LOG_PATH/$MODEL_ENV/grpo_baseline.log"
 echo ""
 
 # ── Show GPU info ──
@@ -116,11 +116,11 @@ fi
 
 # ── Training config summary ──
 echo "${GREEN}>>>${RESET} ${BOLD}Training Config${RESET}"
-echo "    ${YELLOW}→${RESET} Algorithm:    GRPO + PC-Grad (MORL)"
-echo "    ${YELLOW}→${RESET} Cases:        $NUM_CASES → $TOTAL_TRAINING_STEPS steps"
-echo "    ${YELLOW}→${RESET} Batch size:   $TRAIN_BATCH_SIZE (mini=4, micro=2)"
+echo "    ${YELLOW}→${RESET} Algorithm:    GRPO (baseline, NO PC-Grad)"
+echo "    ${YELLOW}→${RESET} Batch size:   16 (mini=4, micro=2)"
 echo "    ${YELLOW}→${RESET} Learning rate: 2e-7"
 echo "    ${YELLOW}→${RESET} KL loss:      low_var_kl (coef=0.001)"
+echo "    ${YELLOW}→${RESET} Cases:        $NUM_CASES → $TOTAL_TRAINING_STEPS steps"
 echo "    ${YELLOW}→${RESET} Rollout:      n=16, temp=0.7, vLLM (gpu_mem=0.5)"
 echo "    ${YELLOW}→${RESET} Dynamic bsz:  max_token_len=16384/gpu"
 echo "    ${YELLOW}→${RESET} FSDP:         size=2, grad_ckpt=True"
@@ -128,7 +128,7 @@ echo "    ${YELLOW}→${RESET} Save/test:    every 100 steps"
 echo ""
 
 echo "${CYAN}╔══════════════════════════════════════════════════════╗${RESET}"
-echo "${CYAN}║${RESET}  ${BOLD}Starting Training...${RESET}"
+echo "${CYAN}║${RESET}  ${BOLD}Starting Baseline Training...${RESET}"
 echo "${CYAN}╚══════════════════════════════════════════════════════╝${RESET}"
 echo ""
 
@@ -165,7 +165,7 @@ python -m verl.trainer.main_ppo \
     actor_rollout_ref.rollout.temperature=0.7 \
     actor_rollout_ref.ref.log_prob_micro_batch_size=4 \
     actor_rollout_ref.ref.fsdp_config.param_offload=False \
-    actor_rollout_ref.actor.enable_pc_grad=True \
+    actor_rollout_ref.actor.enable_pc_grad=False \
     algorithm.kl_ctrl.kl_coef=0.001 \
     trainer.critic_warmup=0 \
     trainer.logger=['wandb'] \
@@ -178,4 +178,4 @@ python -m verl.trainer.main_ppo \
     trainer.save_freq=100 \
     trainer.test_freq=100 \
     trainer.total_training_steps=$TOTAL_TRAINING_STEPS \
-    trainer.total_epochs=1 $@ 2>&1 | tee $LOG_PATH/$MODEL_ENV/grpo.log
+    trainer.total_epochs=1 $@ 2>&1 | tee $LOG_PATH/$MODEL_ENV/grpo_baseline.log

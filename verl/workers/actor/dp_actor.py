@@ -16,7 +16,7 @@ Single Process Actor
 """
 
 import itertools
-from typing import Iterable, Tuple
+from typing import Tuple
 
 import torch
 from torch import nn
@@ -34,6 +34,40 @@ import verl.utils.torch_functional as verl_F
 from flash_attn.bert_padding import pad_input, unpad_input, rearrange, index_first_axis
 
 __all__ = ['DataParallelPPOActor']
+
+
+def pc_grad_combine(grads_a, grads_b):
+    """
+    PC-Grad projection that computes the combined gradient in-place on
+    grads_a, avoiding the allocation of separate projected-gradient lists.
+
+    When gradients conflict (dot < 0):
+        proj_a = g_a - (d / ||b||^2) g_b
+        proj_b = g_b - (d / ||a||^2) g_a
+        combined = proj_a + proj_b = (1 - d/||a||^2) g_a + (1 - d/||b||^2) g_b
+
+    Returns (grads_a, conflict_flag) where grads_a[i] has been overwritten
+    with the combined projected gradient.
+    """
+    dot_product = 0.0
+    norm_a_sq = 0.0
+    norm_b_sq = 0.0
+
+    for g_a, g_b in zip(grads_a, grads_b):
+        dot_product += torch.sum(g_a * g_b)
+        norm_a_sq += torch.sum(g_a * g_a)
+        norm_b_sq += torch.sum(g_b * g_b)
+
+    if dot_product < 0:
+        coeff_a = (1.0 - dot_product / (norm_a_sq + 1e-8)).item()
+        coeff_b = (1.0 - dot_product / (norm_b_sq + 1e-8)).item()
+        for g_a, g_b in zip(grads_a, grads_b):
+            g_a.mul_(coeff_a).add_(g_b, alpha=coeff_b)
+        return grads_a, 1.0
+
+    for g_a, g_b in zip(grads_a, grads_b):
+        g_a.add_(g_b)
+    return grads_a, 0.0
 
 
 class DataParallelPPOActor(BasePPOActor):
@@ -57,7 +91,7 @@ class DataParallelPPOActor(BasePPOActor):
 
     def _forward_micro_batch(self, micro_batch, temperature) -> Tuple[torch.Tensor, torch.Tensor]:
         """
-        Returns: 
+        Returns:
             entropy: # (bs, response_len)
             log_probs: # (bs, response_len)
         """
@@ -201,86 +235,177 @@ class DataParallelPPOActor(BasePPOActor):
         return log_probs
 
     def update_policy(self, data: DataProto):
-        # make sure we are in training mode
         self.actor_module.train()
 
         assert self.config.ppo_mini_batch_size % self.config.ppo_micro_batch_size == 0
-        self.gradient_accumulation = self.config.ppo_mini_batch_size // self.config.ppo_micro_batch_size
-        temperature = data.meta_info['temperature']  # temperature must be in the data.meta_info to avoid slient error
+        temperature = data.meta_info['temperature']
+        use_dynamic_bsz = self.config.get('use_dynamic_bsz', False)
 
         select_keys = ['responses', 'input_ids', 'attention_mask', 'position_ids', 'old_log_probs', 'advantages']
+        if "accuracy_rewards" in data.batch:
+            select_keys.extend(['accuracy_rewards', 'efficiency_rewards'])
         if self.config.use_kl_loss:
             select_keys.append('ref_log_prob')
+
         batch = data.select(batch_keys=select_keys).batch
-
-        # Split to make minibatch iterator for updating the actor
-        # See PPO paper for details. https://arxiv.org/abs/1707.06347
         dataloader = batch.split(self.config.ppo_mini_batch_size)
-
         metrics = {}
-        for batch_idx, data in enumerate(dataloader):
-            # split batch into micro_batches
-            mini_batch = data
-            if self.config.use_dynamic_bsz:
+
+        for batch_idx, mini_batch in enumerate(dataloader):
+            if use_dynamic_bsz:
                 max_token_len = self.config.ppo_max_token_len_per_gpu * self.ulysses_sequence_parallel_size
                 micro_batches, _ = rearrange_micro_batches(batch=mini_batch, max_token_len=max_token_len)
             else:
-                # split batch into micro_batches
                 micro_batches = mini_batch.split(self.config.ppo_micro_batch_size)
-
+            self.gradient_accumulation = len(micro_batches)
             self.actor_optimizer.zero_grad()
 
-            for data in micro_batches:
-                data = data.cuda()  # actor device is cpu when using offload
-                responses = data['responses']
+            for data_micro in micro_batches:
+                data_micro = data_micro.cuda()
+                responses = data_micro['responses']
                 response_length = responses.size(1)
-                attention_mask = data['attention_mask']
+                attention_mask = data_micro['attention_mask']
                 response_mask = attention_mask[:, -response_length:]
-                old_log_prob = data['old_log_probs']
-                advantages = data['advantages']
+                old_log_prob = data_micro['old_log_probs']
 
                 clip_ratio = self.config.clip_ratio
                 entropy_coeff = self.config.entropy_coeff
 
-                # all return: (bsz, response_length)
-                entropy, log_prob = self._forward_micro_batch(micro_batch=data, temperature=temperature)
+                if self.config.get("enable_pc_grad", False) and "accuracy_rewards" in data_micro:
+                    acc_adv = data_micro['accuracy_rewards']
+                    eff_adv = data_micro['efficiency_rewards']
 
-                pg_loss, pg_clipfrac, ppo_kl = core_algos.compute_policy_loss(old_log_prob=old_log_prob,
-                                                                              log_prob=log_prob,
-                                                                              advantages=advantages,
-                                                                              eos_mask=response_mask,
-                                                                              cliprange=clip_ratio)
-                # compute entropy loss from entropy
-                entropy_loss = verl_F.masked_mean(entropy, response_mask)
+                    # Fast path: skip dual-pass PC-Grad when efficiency signal is trivially zero
+                    if torch.all(eff_adv == 0):
+                        entropy, log_prob = self._forward_micro_batch(micro_batch=data_micro, temperature=temperature)
+                        entropy_loss = verl_F.masked_mean(entropy, response_mask)
 
-                # compute policy loss
-                policy_loss = pg_loss - entropy_loss * entropy_coeff
+                        pg_loss, pg_clipfrac, ppo_kl = core_algos.compute_policy_loss(old_log_prob, log_prob, acc_adv, response_mask, clip_ratio)
+                        policy_loss = pg_loss - entropy_loss * entropy_coeff
 
-                if self.config.use_kl_loss:
-                    ref_log_prob = data['ref_log_prob']
-                    # compute kl loss
-                    kld = core_algos.kl_penalty(logprob=log_prob,
-                                                ref_logprob=ref_log_prob,
-                                                kl_penalty=self.config.kl_loss_type)
-                    kl_loss = masked_mean(kld, response_mask)
+                        if self.config.use_kl_loss:
+                            ref_log_prob = data_micro['ref_log_prob']
+                            kld = core_algos.kl_penalty(logprob=log_prob,
+                                                        ref_logprob=ref_log_prob,
+                                                        kl_penalty=self.config.kl_loss_type)
+                            kl_loss = masked_mean(kld, response_mask)
+                            policy_loss = policy_loss - kl_loss * self.config.kl_loss_coef
+                            append_to_dict(metrics, {'actor/kl_loss': kl_loss.detach().item()})
+                            append_to_dict(metrics, {'actor/kl_coef': self.config.kl_loss_coef})
 
-                    policy_loss = policy_loss - kl_loss * self.config.kl_loss_coef
-                    metrics['actor/kl_loss'] = kl_loss.detach().item()
-                    metrics['actor/kl_coef'] = self.config.kl_loss_coef
+                        loss = policy_loss / self.gradient_accumulation
+                        loss.backward()
+                        append_to_dict(metrics, {'actor/pg_loss': pg_loss.detach().item(),
+                                                 'actor/pg_clipfrac': pg_clipfrac.detach().item(),
+                                                 'actor/ppo_kl': ppo_kl.detach().item(),
+                                                 'actor/pc_grad_fast_path': 1.0})
 
-                loss = policy_loss / self.gradient_accumulation
-                loss.backward()
+                    else:
+                        # Full dual-pass PC-Grad path
 
-                data = {
-                    'actor/entropy_loss': entropy_loss.detach().item(),
-                    'actor/pg_loss': pg_loss.detach().item(),
-                    'actor/pg_clipfrac': pg_clipfrac.detach().item(),
-                    'actor/ppo_kl': ppo_kl.detach().item(),
-                }
-                append_to_dict(metrics, data)
+                        # Save accumulated grads from prior micro-batches
+                        # Offload to CPU to free GPU memory for two forward+backward passes
+                        first_grad = next(iter(self.actor_module.parameters())).grad
+                        if first_grad is not None:
+                            accumulated_grads = [p.grad.to('cpu', non_blocking=True) for p in self.actor_module.parameters()]
+                        else:
+                            accumulated_grads = None
+                        self.actor_optimizer.zero_grad()
 
+                        # Pass 1: Accuracy (forward + backward, includes KL regulariser)
+                        entropy_acc, log_prob_acc = self._forward_micro_batch(micro_batch=data_micro, temperature=temperature)
+                        entropy_loss = verl_F.masked_mean(entropy_acc, response_mask)
+
+                        kl_loss_term = torch.tensor(0.0, device=log_prob_acc.device)
+                        if self.config.use_kl_loss:
+                            ref_log_prob = data_micro['ref_log_prob']
+                            kld = core_algos.kl_penalty(logprob=log_prob_acc,
+                                                        ref_logprob=ref_log_prob,
+                                                        kl_penalty=self.config.kl_loss_type)
+                            kl_loss = masked_mean(kld, response_mask)
+                            kl_loss_term = kl_loss * self.config.kl_loss_coef
+                            append_to_dict(metrics, {'actor/kl_loss': kl_loss.detach().item()})
+                            append_to_dict(metrics, {'actor/kl_coef': self.config.kl_loss_coef})
+
+                        pg_loss_acc, pg_clipfrac_acc, _ = core_algos.compute_policy_loss(old_log_prob, log_prob_acc, acc_adv, response_mask, clip_ratio)
+                        loss_acc = (pg_loss_acc - entropy_loss * entropy_coeff - kl_loss_term) / self.gradient_accumulation
+                        loss_acc.backward()
+
+                        # Offload pass-1 grads to CPU to free GPU memory for pass 2
+                        grad_acc = [p.grad.to('cpu', non_blocking=True) if p.grad is not None else torch.zeros_like(p, device='cpu') for p in self.actor_module.parameters()]
+                        del entropy_acc, log_prob_acc, loss_acc
+
+                        self.actor_optimizer.zero_grad()
+                        torch.cuda.empty_cache()
+
+                        # Pass 2: Efficiency (forward + backward, no KL -- applied once in accuracy pass)
+                        entropy_eff, log_prob_eff = self._forward_micro_batch(micro_batch=data_micro, temperature=temperature)
+                        entropy_loss_eff = verl_F.masked_mean(entropy_eff, response_mask)
+                        pg_loss_eff, pg_clipfrac_eff, _ = core_algos.compute_policy_loss(old_log_prob, log_prob_eff, eff_adv, response_mask, clip_ratio)
+                        loss_eff = (pg_loss_eff - entropy_loss_eff * entropy_coeff) / self.gradient_accumulation
+                        loss_eff.backward()
+                        del entropy_eff, log_prob_eff, loss_eff
+
+                        # Bring pass-1 grads back to GPU and combine via PC-Grad projection
+                        device = next(iter(self.actor_module.parameters())).device
+                        grad_acc = [g.to(device, non_blocking=True) for g in grad_acc]
+                        torch.cuda.current_stream().synchronize()
+                        grad_eff = [p.grad if p.grad is not None else torch.zeros_like(p) for p in self.actor_module.parameters()]
+                        combined_grads, conflict_val = pc_grad_combine(grad_acc, grad_eff)
+                        del grad_acc, grad_eff
+
+                        append_to_dict(metrics, {'actor/pc_grad_conflict_rate': conflict_val})
+                        append_to_dict(metrics, {'actor/pg_loss_acc': pg_loss_acc.detach().item()})
+                        append_to_dict(metrics, {'actor/pg_loss_eff': pg_loss_eff.detach().item()})
+                        append_to_dict(metrics, {'actor/pg_clipfrac_acc': pg_clipfrac_acc.detach().item()})
+                        append_to_dict(metrics, {'actor/pg_clipfrac_eff': pg_clipfrac_eff.detach().item()})
+                        append_to_dict(metrics, {'actor/entropy_loss_acc': entropy_loss.detach().item()})
+                        append_to_dict(metrics, {'actor/entropy_loss_eff': entropy_loss_eff.detach().item()})
+
+                        # Restore accumulated grads (from CPU) + add combined projected grads
+                        if accumulated_grads is not None:
+                            accumulated_grads = [g.to(device, non_blocking=True) for g in accumulated_grads]
+                            torch.cuda.current_stream().synchronize()
+                        for i, p in enumerate(self.actor_module.parameters()):
+                            if p.grad is None:
+                                p.grad = torch.zeros_like(p)
+                            if accumulated_grads is not None:
+                                p.grad.copy_(accumulated_grads[i])
+                                p.grad.add_(combined_grads[i])
+                            else:
+                                p.grad.copy_(combined_grads[i])
+                        del accumulated_grads, combined_grads
+
+                else:
+                    # Baseline single-objective path
+                    entropy, log_prob = self._forward_micro_batch(micro_batch=data_micro, temperature=temperature)
+                    entropy_loss = verl_F.masked_mean(entropy, response_mask)
+
+                    advantages = data_micro['advantages']
+                    pg_loss, pg_clipfrac, ppo_kl = core_algos.compute_policy_loss(old_log_prob, log_prob, advantages, response_mask, clip_ratio)
+                    policy_loss = pg_loss - entropy_loss * entropy_coeff
+
+                    if self.config.use_kl_loss:
+                        ref_log_prob = data_micro['ref_log_prob']
+                        kld = core_algos.kl_penalty(logprob=log_prob,
+                                                    ref_logprob=ref_log_prob,
+                                                    kl_penalty=self.config.kl_loss_type)
+                        kl_loss = masked_mean(kld, response_mask)
+                        policy_loss = policy_loss - kl_loss * self.config.kl_loss_coef
+                        append_to_dict(metrics, {'actor/kl_loss': kl_loss.detach().item()})
+                        append_to_dict(metrics, {'actor/kl_coef': self.config.kl_loss_coef})
+
+                    loss = policy_loss / self.gradient_accumulation
+                    loss.backward()
+                    append_to_dict(metrics, {'actor/pg_loss': pg_loss.detach().item(),
+                                             'actor/pg_clipfrac': pg_clipfrac.detach().item(),
+                                             'actor/ppo_kl': ppo_kl.detach().item()})
+
+                append_to_dict(metrics, {'actor/entropy_loss': entropy_loss.detach().item()})
+
+            torch.cuda.empty_cache()
             grad_norm = self._optimizer_step()
-            data = {'actor/grad_norm': grad_norm.detach().item()}
-            append_to_dict(metrics, data)
+            append_to_dict(metrics, {'actor/grad_norm': grad_norm.detach().item()})
+
         self.actor_optimizer.zero_grad()
         return metrics

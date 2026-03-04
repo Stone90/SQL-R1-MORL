@@ -1,224 +1,191 @@
+import ast
 import re
 import os
-import sys
-sys.path.append('..')
+import sqlite3
 from typing import Dict, Tuple, Optional
-from func_timeout import func_timeout, FunctionTimedOut
+from func_timeout import func_timeout
+from .exec_eval import eval_exec_match, get_cursor_from_path, postprocess
 
-from .exec_eval import eval_exec_match
-import signal
+def extract_solution(solution_str: str) -> Tuple[Optional[str], Optional[str], str]:
+    """Extracts the final answer from the model's response string safely."""
+    processed_str = solution_str
 
-def extract_solution(solution_str: str) -> Tuple[Optional[str], str]:
-    """Extracts the final answer from the model's response string.
-    
-    Args:
-        solution_str: Raw response string from the language model
-        
-    Returns:
-        Tuple containing (extracted_answer, processed_string)
-    """
-    # Split response to isolate assistant output
+    # Attempt to isolate assistant output
     if "Assistant:" in solution_str:
         processed_str = solution_str.split("Assistant:", 1)[1]
     elif "<|im_start|>assistant" in solution_str:
         processed_str = solution_str.split("<|im_start|>assistant", 1)[1]
-    else:
-        print("[Error] Failed to locate model response header")
-        return None, solution_str
+    elif "assistant\n" in solution_str.lower():
+        processed_str = re.split(r'assistant\n', solution_str, flags=re.IGNORECASE)[-1]
 
-    # Extract final answer using XML-style tags
+    # Regex patterns
     answer_pattern = r'<answer>(.*?)</answer>'
-    matches = list(re.finditer(answer_pattern, processed_str, re.DOTALL))
     think_pattern = r'<think>(.*?)</think>'
+
+    matches = list(re.finditer(answer_pattern, processed_str, re.DOTALL))
     think_matches = list(re.finditer(think_pattern, processed_str, re.DOTALL))
 
-    if not think_matches:
-        print("[Error] No valid think tags found")
-        final_think = None
-    else:
-        final_think = think_matches[-1].group(1).strip()
-    
-    if not matches:
-        print("[Error] No valid answer tags found")
-        return None, final_think, processed_str
-        
-    final_answer = matches[-1].group(1).strip()
+    final_think = think_matches[-1].group(1).strip() if think_matches else ""
+    final_answer = matches[-1].group(1).strip() if matches else None
 
     return final_answer, final_think, processed_str
 
 def parse_sql_from_answer(answer_text: str) -> Optional[str]:
-    """Parses SQL from the model's answer text.
-    
-    Args:
-        answer_text: Text extracted from model's <answer> tags
-        
-    Returns:
-        SQL string, or None if no SQL is found
-    """
+    if not answer_text:
+        return None
     sql_pattern = r'```sql(.*?)```'
     matches = list(re.finditer(sql_pattern, answer_text, re.DOTALL))
-    
     if not matches:
-        print("[Error] No valid SQL tags found")
-        return None
-    
-    print(f"[Parsed SQL]: {matches[-1].group(1).strip()}")
-    return matches[-1].group(1).strip()
+        # Fallback: check for any code block if sql tag is missing
+        code_pattern = r'```(.*?)```'
+        matches = list(re.finditer(code_pattern, answer_text, re.DOTALL))
 
-def validate_response_structure(answer_str: str, processed_str: str) -> bool:
-    """Performs comprehensive validation of response structure.
-    
-    Args:
-        processed_str: Processed response string from the model
-        
-    Returns:
-        Boolean indicating whether all formatting requirements are met
-    """
-    print("\n[Structure Validation]")
-    validation_passed = True
+    return matches[-1].group(1).strip() if matches else answer_text.strip()
 
-    # Check required tags
-    tags = {
-        'think_start': ('<think>', 1),
-        'think_end': ('</think>', 1),
-        'answer_start': ('<answer>', 1),
-        'answer_end': ('</answer>', 1)
-    }
+def validate_response_structure(answer_str: str, processed_str: str) -> Tuple[Optional[str], bool]:
+    if not answer_str:
+        return None, False
 
-    positions = {}
-    for tag_name, (tag_str, expected_count) in tags.items():
-        count = processed_str.count(tag_str)
-        positions[tag_name] = pos = processed_str.find(tag_str)
-        
-        print(f"  {tag_str}: count={count}, position={pos}")
-        
-        if count != expected_count:
-            print(f"  [Error] {tag_str} appears {count} times (expected {expected_count})")
-            validation_passed = False
+    tags = ['<think>', '</think>', '<answer>', '</answer>']
+    positions = {tag: processed_str.find(tag) for tag in tags}
 
-    # Verify tag order
-    if (positions['think_start'] > positions['think_end'] or
-        positions['think_end'] > positions['answer_start'] or
-        positions['answer_start'] > positions['answer_end']):
-        print("  [Error] Incorrect tag order: Expected <think>...</think><answer>...</answer>")
-        validation_passed = False
-    else:
-        print("Tag sequence validation passed")
-
-    # Extract SQL from answer text
-    if validation_passed:
+    # Check if all tags exist and are in order
+    if all(pos != -1 for pos in positions.values()) and \
+       positions['<think>'] < positions['</think>'] < positions['<answer>'] < positions['</answer>']:
         pred_sql = parse_sql_from_answer(answer_str)
-        if not pred_sql:
-            validation_passed = False
+        return pred_sql, True
+
+    return None, False
+
+
+def _explain_plan_cost(cursor, sql: str) -> Optional[float]:
+    """Run EXPLAIN QUERY PLAN and return a cost score based on operation types.
+
+    Lower cost = more efficient plan. Returns None if the query fails to explain.
+
+    Scoring:
+        - SCAN TABLE (full table scan): 10 points each
+        - USE TEMP B-TREE (temp sorting/grouping): 5 points each
+        - SEARCH TABLE USING INDEX (index lookup): 1 point each
+        - Other operations: 0 points
+    """
+    try:
+        cursor.execute(f"EXPLAIN QUERY PLAN {sql}")
+        rows = cursor.fetchall()
+    except Exception:
+        return None
+
+    cost = 0.0
+    for row in rows:
+        detail = str(row[-1]).upper() if row else ""
+        if "SCAN TABLE" in detail:
+            cost += 10.0
+        elif "SEARCH TABLE" in detail or "SEARCH SUBQUERY" in detail:
+            cost += 1.0
+        if "USE TEMP B-TREE" in detail:
+            cost += 5.0
+    return cost
+
+
+def _compute_efficiency_reward(db_path: str, pred_sql: str, gold_sql: str, exec_status: str) -> float:
+    """Compute efficiency reward by comparing EXPLAIN QUERY PLAN costs.
+
+    Returns a reward in [0, 1]:
+        - 1.0 if pred plan cost <= gold plan cost (at least as efficient)
+        - Proportionally penalized if pred is less efficient than gold
+        - 0.0 if the query cannot be explained or is unexecutable
+    Only awarded when exec_status is Match or Mismatch (SQL must at least run).
+    """
+    if exec_status not in ('Match', 'Mismatch'):
+        return 0.0
+
+    try:
+        cursor = get_cursor_from_path(db_path)
+        pred_cost = _explain_plan_cost(cursor, postprocess(pred_sql))
+        gold_cost = _explain_plan_cost(cursor, postprocess(gold_sql))
+        cursor.close()
+        cursor.connection.close()
+    except Exception:
+        return 0.0
+
+    if pred_cost is None or gold_cost is None:
+        return 0.0
+
+    # Pred is at least as efficient as gold
+    if pred_cost <= gold_cost:
+        reward = 1.0
     else:
-        pred_sql = None
+        # Penalize proportionally: reward = gold_cost / pred_cost
+        reward = gold_cost / pred_cost if pred_cost > 0 else 0.0
 
-    return pred_sql, validation_passed
+    # Half credit for Mismatch (executable but wrong result)
+    if exec_status == 'Mismatch':
+        reward *= 0.5
 
-def compute_score(solution_str: str, 
-                 ground_truth: Dict[str, str],
-                 format_reward: int = 1) :
-    """Computes comprehensive score for model response.
-    
-    Args:
-        solution_str: Raw model response string
-        ground_truth: Dictionary containing ground truth data
-        format_reward: Points awarded/deducted for format correctness
+    return reward
+
+
+def compute_score(solution_str: str, ground_truth: Dict):
+    """
+    Computes the accuracy and efficiency rewards for a given SQL solution.
+
     Returns:
-        Total score (sum of format and answer rewards)
+        A tuple of (accuracy_reward, efficiency_reward).
     """
     FORMAT_REWARD = 1
     EXEC_REWARD = 2
     RESULT_REWARD = 3
 
-    LIMIT_LENGTH = 2048
+    if isinstance(ground_truth, str):
+        try:
+            ground_truth = ast.literal_eval(ground_truth)
+        except (ValueError, SyntaxError):
+            return -1.0, 0.0
 
-    total_score = 0
-    print("\n" + "="*80)
-    print(" Processing New NL2SQL Sample ".center(80, '='))
+    inner_data = ground_truth.get('ground_truth', {})
 
-    # Parse ground truth data
-    db_name = ground_truth.get('db_id', '').replace('\n', '').strip()
-    gold_sql = re.sub(r'\s+', ' ', ground_truth.get('sql', ''))
-    # Extract model answer
+    if isinstance(inner_data, dict):
+        db_id = inner_data.get('db_id')
+        gold_sql = inner_data.get('sql')
+    else:
+        db_id = ground_truth.get('db_id')
+        gold_sql = ground_truth.get('sql')
+
+    if not db_id or not gold_sql:
+        return -1.0, 0.0
+
     answer_text, think_text, processed_str = extract_solution(solution_str)
-    print(f"\n[Model's Response] {processed_str}")
-
-    # Format Reward
     pred_sql, format_correct = validate_response_structure(answer_text, processed_str)
-    format_score = FORMAT_REWARD if format_correct else -abs(FORMAT_REWARD)
-    print(f"\n[Format validation] {'PASS' if format_correct else 'FAIL'}")
-    print(f"[Format score]: {format_score}")
 
-    db_path = os.path.join('data/NL2SQL/SynSQL-2.5M/databases', db_name, db_name + '.sqlite')
-
+    format_score = FORMAT_REWARD if format_correct else -0.5
     exec_score = 0
     result_score = 0
-    if format_correct and pred_sql:
-        # Validate Exec Score
-        pred_sql = re.sub(r'\s+', ' ', pred_sql)
-        print(f"[DB NAME]: {db_name}")
-        print(f"[Gold SQL]: {gold_sql}")
-        print(f"[Pred SQL]: {pred_sql}")
+    exec_status = "Not Attempted"
 
+    db_base = os.environ.get('SYNSQL_DB_DIR', '/workspace/synsql_data/data/SynSQL-2.5M/databases')
+    db_path = os.path.join(db_base, db_id, f"{db_id}.sqlite")
 
+    if pred_sql:
         try:
-            exec_status = func_timeout(
-                timeout=30,
-                func=eval_exec_match,
-                args=(db_path, pred_sql, gold_sql),
-                kwargs={
-                    'plug_value': False, 
-                    'keep_distinct': False, 
-                    'progress_bar_for_each_datapoint': False
-                }
-            )
-        except FunctionTimedOut:
+            if not os.path.exists(db_path):
+                exec_status = 'Unexecutable'
+            else:
+                exec_status = func_timeout(10, eval_exec_match, args=(db_path, pred_sql, gold_sql, 0, False, False))
+        except Exception as e:
             exec_status = 'Unexecutable'
-        print(f"[Exec status]: {exec_status}")
 
-        if exec_status == 'Unexecutable':
-            exec_score = -abs(EXEC_REWARD)
-            result_score = 0
-        elif exec_status == 'Gold Error':
-            exec_score = 0
-            result_score = 0        
+        if exec_status == 'Match':
+            exec_score, result_score = EXEC_REWARD, RESULT_REWARD
         elif exec_status == 'Mismatch':
-            exec_score = EXEC_REWARD
-            result_score = -abs(RESULT_REWARD)
-        elif exec_status == 'Match':
-            exec_score = EXEC_REWARD
-            result_score = RESULT_REWARD
-
-    # Length Reward v1: 鼓励输出接近 LIMIT_LENGTH，同时增加 SQL 在 answer 中的比例，但是要在 SQL 可执行才有意义
-    # Length Reward v2: 更严格的长度奖励，只有 match 才有分，且比例更小 1 分
-    # if format_correct and (exec_status == 'Mismatch' or exec_status == 'Match'):
-    if format_correct and exec_status == 'Match':
-        pos_length = len(think_text) + len(answer_text)
-        if pos_length <= LIMIT_LENGTH:
-            sql_in_answer_sub_score = len(pred_sql) / len(answer_text)
-            length_sub_score = pos_length / LIMIT_LENGTH * 0.5
-            length_score = length_sub_score + sql_in_answer_sub_score
-            print(f"[Length pos_length]: {pos_length}")
-            print(f"[Length pred_sql]: {len(pred_sql)}")
-            print(f"[Length answer_text]: {len(answer_text)}")
+            exec_score, result_score = EXEC_REWARD, -1
         else:
-            sql_in_answer_sub_score = len(pred_sql) / len(answer_text)
-            length_score = 0.5 + sql_in_answer_sub_score
-    else:
-        length_score = 0
+            exec_score = -1
 
-    
+    # Efficiency: compare EXPLAIN QUERY PLAN costs of pred vs gold
+    efficiency_reward = 0.0
+    if pred_sql and os.path.exists(db_path):
+        efficiency_reward = _compute_efficiency_reward(db_path, pred_sql, gold_sql, exec_status)
 
-    total_score = format_score + exec_score + result_score + length_score
+    accuracy_reward = format_score + exec_score + result_score
 
-    print("\n" + "-"*80)
-    print(f" Final Score ".center(80, '-'))
-    print(f" -- Format Score: {format_score}")
-    print(f" -- Exec Score: {exec_score}")
-    print(f" -- Result Score: {result_score}")
-    print(f" -- Length Score: {length_score}")
-    print(f" -- Total Score: {total_score}")
-    print("="*80 + "\n")
-
-    return total_score
+    return accuracy_reward, efficiency_reward

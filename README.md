@@ -130,41 +130,54 @@ SQL-R1/
 
 > [!NOTE]
 > Before getting started, make sure your computing environment supports the following settings:
-> - Environment: Python 3.9+
-> - CUDA Version: 12.0+ (for verl and vllm integration)
-> - GPU Prerequisites: 8 x 80GB+ GPU (for training) / 2 x 40GB GPU (for inference)
+> - Environment: Python 3.11 (required by flash-attn wheel)
+> - CUDA Version: 12.1+ (for verl and vllm integration)
+> - GPU Prerequisites: 2 x A100 80GB GPU (for training) / 1 x 40GB GPU (for inference)
 
-### Installation
+### First Pod (fresh setup)
 
-1. Clone the repository:
+The project is designed for persistent-volume GPU pods (e.g. RunPod, Lambda). The venv and data are stored on the persistent volume so they survive pod restarts.
+
 ```bash
-git clone https://github.com/MPX0222/SQL-R1.git
-cd SQL-R1
+# 1. Clone the repo onto the persistent volume
+git clone <repo-url> /workspace/SQL-R1-MORL
+cd /workspace/SQL-R1-MORL
+
+# 2. Create persistent venv (installs system packages, PyTorch, Flash Attention, vLLM, etc.)
+bash sh/setup_venv.sh          # ~10 min, creates .venv/ on persistent volume
+
+# 3. Download model, training data, and databases
+sh sh/setup_data.sh            # downloads SQL-R1-3B, SynSQL data, SQLite databases
+
+# 4. Train
+sh sh/train.sh                 # MORL (PC-Grad)
+sh sh/train_baseline.sh        # baseline (single-objective)
 ```
 
-2. Create and activate a virtual environment (recommended):
+### Subsequent Pods
+
+No reinstall needed — the venv and data persist on the volume.
+
 ```bash
-conda create -n sqlr1 python=3.9
+cd /workspace/SQL-R1-MORL
+apt update && apt install -y git git-lfs ninja-build tmux   # ~30s
+sh sh/train.sh                                               # auto-activates .venv
 ```
 
-3. Install dependencies:
+### Alternative: One-off Install (no venv)
+
 ```bash
-pip install torch==2.4.0 --index-url https://download.pytorch.org/whl/cu121
-pip install vllm==0.6.3 ray
-pip install flash-attn --no-build-isolation
-pip install -e .  # For verl integration
-pip install wandb IPython matplotlib sqlparse func_timeout nltk ijson
+bash install.sh                # installs into system Python
+sh sh/setup_data.sh
+sh sh/train.sh
 ```
-
-4. Download the model weights from HuggingFace and put them in the `models/` directory. 
-
-5. For training, copy the training dataset in the `example_data` directory to the `data` directory. For inference, copy the database information in the `db_info` directory (including files forSpider-dev, Spider-test and BIRD-dev) to the related dataset (`data/Spider`, `data/BIRD`) directory.
 
 ## 🚀 Quick Start
 
 1. Run training:
 ```bash
-sh sh/train.sh
+sh sh/train.sh                 # MORL (PC-Grad enabled)
+sh sh/train_baseline.sh        # baseline (single-objective)
 ```
 
 2. Run inference:
@@ -174,9 +187,7 @@ sh sh/inference.sh
 
 3. Run evaluation:
 ```bash
-# evaluate spider
 sh sh/eval_spider.sh
-# evaluate bird
 sh sh/eval_bird.sh
 ```
 

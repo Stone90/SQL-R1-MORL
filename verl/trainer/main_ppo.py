@@ -17,6 +17,7 @@ Note that we don't combine the main with ray_trainer as ray_trainer is used by o
 
 from verl import DataProto
 import torch
+import ast
 from verl.utils.reward_score import gsm8k, synsql
 from verl.trainer.ppo.ray_trainer import RayPPOTrainer
 
@@ -45,7 +46,8 @@ class RewardManager():
         if 'rm_scores' in data.batch.keys():
             return data.batch['rm_scores']
 
-        reward_tensor = torch.zeros_like(data.batch['responses'], dtype=torch.float32)
+        accuracy_reward_tensor = torch.zeros_like(data.batch['responses'], dtype=torch.float32)
+        efficiency_reward_tensor = torch.zeros_like(data.batch['responses'], dtype=torch.float32)
 
         already_print_data_sources = {}
 
@@ -67,14 +69,17 @@ class RewardManager():
             sequences = torch.cat((valid_prompt_ids, valid_response_ids))
             sequences_str = self.tokenizer.decode(sequences)
 
-            ground_truth = data_item.non_tensor_batch['reward_model']['ground_truth']
+            ground_truth = data_item.non_tensor_batch['reward_model']
+            if isinstance(ground_truth, str):
+                ground_truth = ast.literal_eval(ground_truth)
 
             # select rm_score
             data_source = data_item.non_tensor_batch['data_source']
             compute_score_fn = _select_rm_score_fn(data_source)
 
-            score = compute_score_fn(solution_str=sequences_str, ground_truth=ground_truth)
-            reward_tensor[i, valid_response_length - 1] = score
+            accuracy_reward, efficiency_reward = compute_score_fn(solution_str=sequences_str, ground_truth=ground_truth)
+            accuracy_reward_tensor[i, valid_response_length - 1] = accuracy_reward
+            efficiency_reward_tensor[i, valid_response_length - 1] = efficiency_reward
 
             if data_source not in already_print_data_sources:
                 already_print_data_sources[data_source] = 0
@@ -83,7 +88,9 @@ class RewardManager():
                 already_print_data_sources[data_source] += 1
                 print(sequences_str)
 
-        return reward_tensor
+        data.batch["accuracy_rewards"] = accuracy_reward_tensor
+        data.batch["efficiency_rewards"] = efficiency_reward_tensor
+        return accuracy_reward_tensor + efficiency_reward_tensor
 
 
 import ray

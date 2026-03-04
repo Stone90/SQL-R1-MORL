@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import gc
 import os
 import logging
 import torch
@@ -75,6 +76,9 @@ class FSDPVLLMShardingManager(BaseShardingManager):
         self.inference_engine.sync_model_weights(params, load_format=load_format)
         log_gpu_memory_usage('After sync model weights in sharding manager', logger=logger)
 
+        # Re-allocate KV cache (freed in __exit__ to save GPU memory during training)
+        self.inference_engine.init_cache_engine()
+
         del params
         torch.cuda.empty_cache()
         log_gpu_memory_usage('After del state_dict and empty_cache in sharding manager', logger=logger)
@@ -93,16 +97,15 @@ class FSDPVLLMShardingManager(BaseShardingManager):
     def __exit__(self, exc_type, exc_value, traceback):
         log_gpu_memory_usage('Before vllm offload in sharding manager', logger=logger)
         self.inference_engine.offload_model_weights()
+        self.inference_engine.free_cache_engine()
         log_gpu_memory_usage('After vllm offload in sharding manager', logger=logger)
-
-        # self.module.to('cuda')
-        # if torch.distributed.get_rank() == 0:
-        #     print(f'after actor module to cuda in sharding manager memory allocated: {torch.cuda.memory_allocated() / 1e9}GB, reserved: {torch.cuda.memory_reserved() / 1e9}GB')
 
         self.module.train()
 
-        # add empty cache after each compute
+        # Force GC to collect CacheEngine/tensor refs, then reclaim GPU memory
+        gc.collect()
         torch.cuda.empty_cache()
+        log_gpu_memory_usage('After gc.collect + empty_cache in sharding manager', logger=logger)
 
         # restore random states
         if self.device_mesh is not None:

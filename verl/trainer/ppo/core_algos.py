@@ -135,17 +135,18 @@ def compute_grpo_outcome_advantage(token_level_rewards: torch.Tensor,
     id2mean = {}
     id2std = {}
 
+    device = scores.device
     with torch.no_grad():
         bsz = scores.shape[0]
         for i in range(bsz):
             id2score[index[i]].append(scores[i])
         for idx in id2score:
             if len(id2score[idx]) == 1:
-                id2mean[idx] = torch.tensor(0.0)
-                id2std[idx] = torch.tensor(1.0)
+                id2mean[idx] = torch.tensor(0.0, device=device)
+                id2std[idx] = torch.tensor(1.0, device=device)
             elif len(id2score[idx]) > 1:
-                id2mean[idx] = torch.mean(torch.tensor(id2score[idx]))
-                id2std[idx] = torch.std(torch.tensor([id2score[idx]]))
+                id2mean[idx] = torch.mean(torch.tensor(id2score[idx], device=device))
+                id2std[idx] = torch.std(torch.tensor(id2score[idx], device=device))
             else:
                 raise ValueError(f"no score in prompt index: {idx}")
         for i in range(bsz):

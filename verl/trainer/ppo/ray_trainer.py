@@ -143,6 +143,22 @@ def compute_advantage(data: DataProto, adv_estimator, gamma=1.0, lam=1.0, num_re
                                                                         index=index)
         data.batch['advantages'] = advantages
         data.batch['returns'] = returns
+
+        # Compute per-objective GRPO advantages for MORL PC-Grad
+        if 'accuracy_rewards' in data.batch.keys():
+            # Snapshot raw reward scalars before GRPO overwrites them with advantages
+            acc_raw = (data.batch['accuracy_rewards'] * (data.batch['accuracy_rewards'] != 0)).sum(dim=-1)
+            eff_raw = (data.batch['efficiency_rewards'] * (data.batch['efficiency_rewards'] != 0)).sum(dim=-1)
+            data.meta_info['accuracy_reward_raw_mean'] = torch.mean(acc_raw).item()
+            data.meta_info['efficiency_reward_raw_mean'] = torch.mean(eff_raw).item()
+
+            for key in ['accuracy_rewards', 'efficiency_rewards']:
+                obj_adv, _ = core_algos.compute_grpo_outcome_advantage(
+                    token_level_rewards=data.batch[key],
+                    eos_mask=response_mask,
+                    index=index)
+                data.batch[key] = obj_adv
+
     elif adv_estimator == 'reinforce_plus_plus':
         token_level_rewards = data.batch['token_level_rewards']
         responses = data.batch['responses']
@@ -298,16 +314,22 @@ def compute_reward_metrics(batch):
 
     reward_metrics = {}
     reward_metrics["reward/mean"] = torch.mean(reward_tensor).detach().item()
-    # Calculate all_correct ratio (value == 3)
-    all_correct = torch.sum(reward_tensor == 3).float() / reward_tensor.numel()
-    reward_metrics["reward/all_correct_ratio"] = all_correct.detach().item()
-    # Calculate format_error ratio (value == -1)
-    format_error = torch.sum(reward_tensor == -1).float() / reward_tensor.numel()
-    reward_metrics["reward/format_error_ratio"] = format_error.detach().item()
-    # Calculate wrong answer ratio (value == -1)
-    format_error = torch.sum(reward_tensor == -0.5).float() / reward_tensor.numel()
-    reward_metrics["reward/wrong_answer_ratio"] = format_error.detach().item()
-    
+
+    # MORL: accuracy=6 means format(1)+exec(2)+match(3), plus efficiency > 0
+    # A perfect response scores >= 6.0 (accuracy=6 + some efficiency)
+    match_ratio = torch.sum(reward_tensor >= 5.5).float() / reward_tensor.numel()
+    reward_metrics["reward/match_ratio"] = match_ratio.detach().item()
+
+    # Per-objective raw reward means (before GRPO normalization)
+    if 'accuracy_reward_raw_mean' in batch.meta_info:
+        reward_metrics["reward/accuracy_mean"] = batch.meta_info['accuracy_reward_raw_mean']
+        reward_metrics["reward/efficiency_mean"] = batch.meta_info['efficiency_reward_raw_mean']
+        # Also log post-normalization advantages for debugging
+        acc_adv = batch.batch['accuracy_rewards'].sum(-1)
+        eff_adv = batch.batch['efficiency_rewards'].sum(-1)
+        reward_metrics["reward/accuracy_advantage_mean"] = torch.mean(acc_adv).detach().item()
+        reward_metrics["reward/efficiency_advantage_mean"] = torch.mean(eff_adv).detach().item()
+
     return reward_metrics
 
 
@@ -382,7 +404,7 @@ class RayPPOTrainer(object):
                                          truncation='error')
         self.train_dataloader = DataLoader(dataset=self.train_dataset,
                                            batch_size=self.config.data.train_batch_size,
-                                           shuffle=True,
+                                           shuffle=False,
                                            drop_last=True,
                                            collate_fn=collate_fn)
 
@@ -467,9 +489,11 @@ class RayPPOTrainer(object):
 
         metric_dict = {}
         for data_source, rewards in data_source_reward.items():
-            count_equal_3 = sum(1 for reward in rewards if reward == 3)
+            # MORL: accuracy=6 + efficiency~0.9 = ~6.9 for a perfect response
+            # Use >= 5.5 to catch correct SQL (format=1 + exec=2 + match=3 = 6)
+            count_correct = sum(1 for reward in rewards if reward >= 5.5)
             total_count = len(rewards)
-            metric_dict[f'val/test_score/{data_source}'] = count_equal_3 / total_count if total_count > 0 else 0
+            metric_dict[f'val/test_score/{data_source}'] = count_correct / total_count if total_count > 0 else 0
 
         return metric_dict
 
