@@ -127,7 +127,7 @@ elif [ "$USING_BUNDLED" = true ]; then
         ln -sfn "$(cd "$db" && pwd)" "$DB_DIR/$db_name"
     done
     ok "Symlinked bundled databases into $DB_DIR"
-    info "Database count: $(find "$DB_DIR" -name "*.sqlite" | wc -l) databases"
+    info "Database count: $(find -L "$DB_DIR" -name "*.sqlite" | wc -l) databases"
 else
     step "Downloading SynSQL SQLite databases from HuggingFace (OmniSQL-datasets)..."
     info "These are needed for execution-based reward (EXPLAIN QUERY PLAN)"
