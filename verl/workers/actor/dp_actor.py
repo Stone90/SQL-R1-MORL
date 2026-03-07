@@ -16,6 +16,7 @@ Single Process Actor
 """
 
 import itertools
+import sys
 from typing import Tuple
 
 import torch
@@ -261,8 +262,16 @@ class DataParallelPPOActor(BasePPOActor):
             select_keys.append('ref_log_prob')
 
         batch = data.select(batch_keys=select_keys).batch
-        dataloader = batch.split(self.config.ppo_mini_batch_size)
+        dataloader = list(batch.split(self.config.ppo_mini_batch_size))
         metrics = {}
+
+        rank = torch.distributed.get_rank() if torch.distributed.is_initialized() else 0
+        def _diag(msg):
+            rss_gb = int(open('/proc/self/status').read().split('VmRSS:')[1].split()[0]) / 1024 / 1024
+            gpu_alloc = torch.cuda.memory_allocated() / 1024**3
+            gpu_resv = torch.cuda.memory_reserved() / 1024**3
+            print(f"[rank{rank}][diag] {msg} | RSS={rss_gb:.1f}GB GPU_alloc={gpu_alloc:.1f}GB GPU_resv={gpu_resv:.1f}GB", file=sys.stderr, flush=True)
+        _diag(f"update_policy start, {len(dataloader)} mini-batches")
 
         for batch_idx, mini_batch in enumerate(dataloader):
             if use_dynamic_bsz:
@@ -271,6 +280,7 @@ class DataParallelPPOActor(BasePPOActor):
             else:
                 micro_batches = mini_batch.split(self.config.ppo_micro_batch_size)
             self.gradient_accumulation = len(micro_batches)
+            _diag(f"mini-batch {batch_idx}, {len(micro_batches)} micro-batches")
             self.actor_optimizer.zero_grad()
 
             for data_micro in micro_batches:
@@ -341,6 +351,7 @@ class DataParallelPPOActor(BasePPOActor):
 
                         pg_loss_acc, pg_clipfrac_acc, _ = core_algos.compute_policy_loss(old_log_prob, log_prob_acc, acc_adv, response_mask, clip_ratio)
                         loss_acc = (pg_loss_acc - entropy_loss * entropy_coeff - kl_loss_term) / self.gradient_accumulation
+                        _diag(f"  mb{batch_idx} pass1 backward")
                         loss_acc.backward()
 
                         # Clone pass-1 grads (keep on GPU — H100 has plenty of VRAM)
@@ -355,10 +366,12 @@ class DataParallelPPOActor(BasePPOActor):
                         entropy_loss_eff = verl_F.masked_mean(entropy_eff, response_mask)
                         pg_loss_eff, pg_clipfrac_eff, _ = core_algos.compute_policy_loss(old_log_prob, log_prob_eff, eff_adv, response_mask, clip_ratio)
                         loss_eff = (pg_loss_eff - entropy_loss_eff * entropy_coeff) / self.gradient_accumulation
+                        _diag(f"  mb{batch_idx} pass2 backward")
                         loss_eff.backward()
                         del entropy_eff, log_prob_eff, loss_eff
                         torch.cuda.empty_cache()
 
+                        _diag(f"  mb{batch_idx} pc-grad project")
                         # --- PC-Grad projection ---
                         # Phase 1: Compute dot product and norms
                         dot_product, norm_a_sq, norm_b_sq = 0.0, 0.0, 0.0
@@ -423,6 +436,7 @@ class DataParallelPPOActor(BasePPOActor):
                 append_to_dict(metrics, {'actor/entropy_loss': entropy_loss.detach().item()})
 
             torch.cuda.empty_cache()
+            _diag(f"mini-batch {batch_idx} optimizer step")
             grad_norm = self._optimizer_step()
             append_to_dict(metrics, {'actor/grad_norm': grad_norm.detach().item()})
 
