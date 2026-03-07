@@ -346,13 +346,46 @@ class DataParallelPPOActor(BasePPOActor):
                         loss_eff.backward()
                         del entropy_eff, log_prob_eff, loss_eff
 
-                        # Bring pass-1 grads back to GPU and combine via PC-Grad projection
+                        # --- PC-Grad projection: streaming per-parameter to minimize GPU memory ---
                         device = next(iter(self.actor_module.parameters())).device
-                        grad_acc = [g.to(device, non_blocking=True) for g in grad_acc]
-                        torch.cuda.current_stream().synchronize()
-                        grad_eff = [p.grad if p.grad is not None else torch.zeros_like(p) for p in self.actor_module.parameters()]
-                        combined_grads, conflict_val = pc_grad_combine(grad_acc, grad_eff)
-                        del grad_acc, grad_eff
+
+                        # Phase 1: Compute dot product and norms (one param at a time on GPU)
+                        dot_product, norm_a_sq, norm_b_sq = 0.0, 0.0, 0.0
+                        for i, p in enumerate(self.actor_module.parameters()):
+                            g_a = grad_acc[i].to(device, non_blocking=True)
+                            torch.cuda.current_stream().synchronize()
+                            g_b = p.grad if p.grad is not None else torch.zeros_like(p)
+                            dot_product += torch.sum(g_a * g_b).item()
+                            norm_a_sq += torch.sum(g_a * g_a).item()
+                            norm_b_sq += torch.sum(g_b * g_b).item()
+                            del g_a
+
+                        if dot_product < 0:
+                            coeff_a = 1.0 - dot_product / (norm_a_sq + 1e-8)
+                            coeff_b = 1.0 - dot_product / (norm_b_sq + 1e-8)
+                            conflict_val = 1.0
+                        else:
+                            coeff_a = 1.0
+                            coeff_b = 1.0
+                            conflict_val = 0.0
+
+                        # Phase 2: Apply projection and restore accumulated grads (one param at a time)
+                        for i, p in enumerate(self.actor_module.parameters()):
+                            g_a = grad_acc[i].to(device, non_blocking=True)
+                            torch.cuda.current_stream().synchronize()
+                            if p.grad is None:
+                                p.grad = torch.zeros_like(p)
+                            # combined = coeff_a * g_a + coeff_b * p.grad
+                            p.grad.mul_(coeff_b).add_(g_a, alpha=coeff_a)
+                            del g_a
+                            grad_acc[i] = None  # free CPU memory
+                            if accumulated_grads is not None:
+                                acc_g = accumulated_grads[i].to(device, non_blocking=True)
+                                torch.cuda.current_stream().synchronize()
+                                p.grad.add_(acc_g)
+                                del acc_g
+                                accumulated_grads[i] = None
+                        del grad_acc, accumulated_grads
 
                         append_to_dict(metrics, {'actor/pc_grad_conflict_rate': conflict_val})
                         append_to_dict(metrics, {'actor/pg_loss_acc': pg_loss_acc.detach().item()})
@@ -361,20 +394,6 @@ class DataParallelPPOActor(BasePPOActor):
                         append_to_dict(metrics, {'actor/pg_clipfrac_eff': pg_clipfrac_eff.detach().item()})
                         append_to_dict(metrics, {'actor/entropy_loss_acc': entropy_loss.detach().item()})
                         append_to_dict(metrics, {'actor/entropy_loss_eff': entropy_loss_eff.detach().item()})
-
-                        # Restore accumulated grads (from CPU) + add combined projected grads
-                        if accumulated_grads is not None:
-                            accumulated_grads = [g.to(device, non_blocking=True) for g in accumulated_grads]
-                            torch.cuda.current_stream().synchronize()
-                        for i, p in enumerate(self.actor_module.parameters()):
-                            if p.grad is None:
-                                p.grad = torch.zeros_like(p)
-                            if accumulated_grads is not None:
-                                p.grad.copy_(accumulated_grads[i])
-                                p.grad.add_(combined_grads[i])
-                            else:
-                                p.grad.copy_(combined_grads[i])
-                        del accumulated_grads, combined_grads
 
                 else:
                     # Baseline single-objective path
