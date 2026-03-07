@@ -204,7 +204,10 @@ class RayWorkerGroup(WorkerGroup):
 
     def _is_worker_alive(self, worker: ray.actor.ActorHandle):
         worker_state_dict = get_actor(worker._actor_id.hex())
-        return worker_state_dict.get("state", "undefined") == "ALIVE" if worker_state_dict is not None else False
+        if worker_state_dict is None:
+            return False
+        state = worker_state_dict.get("state", "undefined")
+        return state != "DEAD"
 
     def _init_with_detached_workers(self, worker_names):
         workers = [ray.get_actor(name=name) for name in worker_names]
