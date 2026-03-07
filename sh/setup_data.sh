@@ -63,8 +63,23 @@ else
     mkdir -p "$MODEL_DIR"
     # Use hf_transfer for speed if available, otherwise fall back to default
     python -c "import hf_transfer" 2>/dev/null && export HF_HUB_ENABLE_HF_TRANSFER=1 || export HF_HUB_ENABLE_HF_TRANSFER=0
-    hf download "MPX0222forHF/$MODEL_NAME" --local-dir "$MODEL_PATH" \
-        --exclude "*.pt" --exclude "*.bin"
+    MAX_RETRIES=3
+    for attempt in $(seq 1 $MAX_RETRIES); do
+        if hf download "MPX0222forHF/$MODEL_NAME" --local-dir "$MODEL_PATH" \
+            --exclude "*.pt" --exclude "*.bin"; then
+            break
+        fi
+        if [ "$attempt" -eq "$MAX_RETRIES" ]; then
+            fail "Model download failed after $MAX_RETRIES attempts"
+            exit 1
+        fi
+        info "Download interrupted — retrying ($attempt/$MAX_RETRIES)..."
+    done
+    # Verify at least one safetensor shard was actually downloaded
+    if [ -z "$(ls "$MODEL_PATH"/*.safetensors 2>/dev/null)" ]; then
+        fail "Model download incomplete — no .safetensors files found in $MODEL_PATH"
+        exit 1
+    fi
     ok "Model downloaded to $MODEL_PATH"
     info "Files: $(ls "$MODEL_PATH"/*.safetensors 2>/dev/null | wc -l) safetensor shards"
 fi
