@@ -336,6 +336,7 @@ class DataParallelPPOActor(BasePPOActor):
                         del entropy_acc, log_prob_acc, loss_acc
 
                         self.actor_optimizer.zero_grad()
+                        import gc; gc.collect()
                         torch.cuda.empty_cache()
 
                         # Pass 2: Efficiency (forward + backward, no KL -- applied once in accuracy pass)
@@ -345,6 +346,7 @@ class DataParallelPPOActor(BasePPOActor):
                         loss_eff = (pg_loss_eff - entropy_loss_eff * entropy_coeff) / self.gradient_accumulation
                         loss_eff.backward()
                         del entropy_eff, log_prob_eff, loss_eff
+                        torch.cuda.empty_cache()
 
                         # --- PC-Grad projection: streaming per-parameter to minimize GPU memory ---
                         device = next(iter(self.actor_module.parameters())).device
