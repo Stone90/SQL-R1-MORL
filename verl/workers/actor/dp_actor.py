@@ -249,7 +249,8 @@ class DataParallelPPOActor(BasePPOActor):
     def update_policy(self, data: DataProto):
         self.actor_module.train()
 
-        assert self.config.ppo_mini_batch_size % self.config.ppo_micro_batch_size == 0
+        if not self.config.get('use_dynamic_bsz', False):
+            assert self.config.ppo_mini_batch_size % self.config.ppo_micro_batch_size == 0
         temperature = data.meta_info['temperature']
         use_dynamic_bsz = self.config.get('use_dynamic_bsz', False)
 
