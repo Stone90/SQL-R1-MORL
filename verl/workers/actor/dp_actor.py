@@ -298,8 +298,20 @@ class DataParallelPPOActor(BasePPOActor):
                     acc_adv = data_micro['accuracy_rewards']
                     eff_adv = data_micro['efficiency_rewards']
 
-                    # Fast path: skip dual-pass PC-Grad when efficiency signal is trivially zero
-                    if torch.all(eff_adv == 0):
+                    # Sync fast-path decision across FSDP ranks — different data shards
+                    # can have different eff_adv distributions, causing NCCL collective
+                    # count divergence if ranks take different code paths
+                    eff_is_zero_local = bool(torch.all(eff_adv == 0))
+                    eff_is_zero = eff_is_zero_local
+                    if torch.distributed.is_initialized() and torch.distributed.get_world_size() > 1:
+                        any_nonzero = torch.tensor(
+                            [not eff_is_zero_local], device=eff_adv.device, dtype=torch.float32
+                        )
+                        torch.distributed.all_reduce(any_nonzero, op=torch.distributed.ReduceOp.MAX)
+                        eff_is_zero = any_nonzero.item() == 0
+                    _diag(f"  mb{batch_idx} eff_sync: local_zero={eff_is_zero_local} global_zero={eff_is_zero}")
+
+                    if eff_is_zero:
                         entropy, log_prob = self._forward_micro_batch(micro_batch=data_micro, temperature=temperature)
                         entropy_loss = verl_F.masked_mean(entropy, response_mask)
 
