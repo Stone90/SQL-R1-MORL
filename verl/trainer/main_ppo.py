@@ -15,6 +15,9 @@
 Note that we don't combine the main with ray_trainer as ray_trainer is used by other main.
 """
 
+import faulthandler
+faulthandler.enable()
+
 from verl import DataProto
 import torch
 import ast

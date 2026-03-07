@@ -11,7 +11,7 @@ transformers==4.46.3         # Added: Critical for Tokenizers/Models
 accelerate==0.34.2           # Stable with Torch 2.4
 
 # --- Distributed & Data ---
-ray==2.37.0                  # Added: Required for vLLM distributed execution
+ray[default]==2.37.0           # Added: Required for vLLM distributed execution
 tensordict==0.5.0            # Compatible with Torch 2.4
 numpy==1.26.4                # CRITICAL: Pinned < 2.0 (vLLM crashes with Numpy 2.x)
 pandas==2.2.2                # Added: Required for data processing

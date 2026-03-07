@@ -16,6 +16,7 @@ Single Process Actor
 """
 
 import itertools
+import sys
 from typing import Tuple
 
 import torch
@@ -177,11 +178,23 @@ class DataParallelPPOActor(BasePPOActor):
     def _optimizer_step(self):
         assert self.config.grad_clip is not None
 
+        # Deferred optimizer offload: load states to GPU just before step
+        is_offload = self.config.fsdp_config.get('optimizer_offload', False)
+        if is_offload:
+            from verl.utils.fsdp_utils import load_fsdp_optimizer
+            load_fsdp_optimizer(optimizer=self.actor_optimizer, device_id=torch.cuda.current_device())
+
         if isinstance(self.actor_module, FSDP):
             grad_norm = self.actor_module.clip_grad_norm_(max_norm=self.config.grad_clip)
         else:
             grad_norm = torch.nn.utils.clip_grad_norm_(self.actor_module.parameters(), max_norm=self.config.grad_clip)
         self.actor_optimizer.step()
+
+        # Immediately offload optimizer states back to CPU
+        if is_offload:
+            from verl.utils.fsdp_utils import offload_fsdp_optimizer
+            offload_fsdp_optimizer(optimizer=self.actor_optimizer)
+
         return grad_norm
 
     def compute_log_prob(self, data: DataProto) -> torch.Tensor:
@@ -237,7 +250,8 @@ class DataParallelPPOActor(BasePPOActor):
     def update_policy(self, data: DataProto):
         self.actor_module.train()
 
-        assert self.config.ppo_mini_batch_size % self.config.ppo_micro_batch_size == 0
+        if not self.config.get('use_dynamic_bsz', False):
+            assert self.config.ppo_mini_batch_size % self.config.ppo_micro_batch_size == 0
         temperature = data.meta_info['temperature']
         use_dynamic_bsz = self.config.get('use_dynamic_bsz', False)
 
@@ -248,8 +262,16 @@ class DataParallelPPOActor(BasePPOActor):
             select_keys.append('ref_log_prob')
 
         batch = data.select(batch_keys=select_keys).batch
-        dataloader = batch.split(self.config.ppo_mini_batch_size)
+        dataloader = list(batch.split(self.config.ppo_mini_batch_size))
         metrics = {}
+
+        rank = torch.distributed.get_rank() if torch.distributed.is_initialized() else 0
+        def _diag(msg):
+            rss_gb = int(open('/proc/self/status').read().split('VmRSS:')[1].split()[0]) / 1024 / 1024
+            gpu_alloc = torch.cuda.memory_allocated() / 1024**3
+            gpu_resv = torch.cuda.memory_reserved() / 1024**3
+            print(f"[rank{rank}][diag] {msg} | RSS={rss_gb:.1f}GB GPU_alloc={gpu_alloc:.1f}GB GPU_resv={gpu_resv:.1f}GB", file=sys.stderr, flush=True)
+        _diag(f"update_policy start, {len(dataloader)} mini-batches")
 
         for batch_idx, mini_batch in enumerate(dataloader):
             if use_dynamic_bsz:
@@ -258,6 +280,7 @@ class DataParallelPPOActor(BasePPOActor):
             else:
                 micro_batches = mini_batch.split(self.config.ppo_micro_batch_size)
             self.gradient_accumulation = len(micro_batches)
+            _diag(f"mini-batch {batch_idx}, {len(micro_batches)} micro-batches")
             self.actor_optimizer.zero_grad()
 
             for data_micro in micro_batches:
@@ -275,8 +298,20 @@ class DataParallelPPOActor(BasePPOActor):
                     acc_adv = data_micro['accuracy_rewards']
                     eff_adv = data_micro['efficiency_rewards']
 
-                    # Fast path: skip dual-pass PC-Grad when efficiency signal is trivially zero
-                    if torch.all(eff_adv == 0):
+                    # Sync fast-path decision across FSDP ranks — different data shards
+                    # can have different eff_adv distributions, causing NCCL collective
+                    # count divergence if ranks take different code paths
+                    eff_is_zero_local = bool(torch.all(eff_adv == 0))
+                    eff_is_zero = eff_is_zero_local
+                    if torch.distributed.is_initialized() and torch.distributed.get_world_size() > 1:
+                        any_nonzero = torch.tensor(
+                            [not eff_is_zero_local], device=eff_adv.device, dtype=torch.float32
+                        )
+                        torch.distributed.all_reduce(any_nonzero, op=torch.distributed.ReduceOp.MAX)
+                        eff_is_zero = any_nonzero.item() == 0
+                    _diag(f"  mb{batch_idx} eff_sync: local_zero={eff_is_zero_local} global_zero={eff_is_zero}")
+
+                    if eff_is_zero:
                         entropy, log_prob = self._forward_micro_batch(micro_batch=data_micro, temperature=temperature)
                         entropy_loss = verl_F.masked_mean(entropy, response_mask)
 
@@ -304,10 +339,9 @@ class DataParallelPPOActor(BasePPOActor):
                         # Full dual-pass PC-Grad path
 
                         # Save accumulated grads from prior micro-batches
-                        # Offload to CPU to free GPU memory for two forward+backward passes
                         first_grad = next(iter(self.actor_module.parameters())).grad
                         if first_grad is not None:
-                            accumulated_grads = [p.grad.to('cpu', non_blocking=True) for p in self.actor_module.parameters()]
+                            accumulated_grads = [p.grad.clone() for p in self.actor_module.parameters()]
                         else:
                             accumulated_grads = None
                         self.actor_optimizer.zero_grad()
@@ -329,10 +363,11 @@ class DataParallelPPOActor(BasePPOActor):
 
                         pg_loss_acc, pg_clipfrac_acc, _ = core_algos.compute_policy_loss(old_log_prob, log_prob_acc, acc_adv, response_mask, clip_ratio)
                         loss_acc = (pg_loss_acc - entropy_loss * entropy_coeff - kl_loss_term) / self.gradient_accumulation
+                        _diag(f"  mb{batch_idx} pass1 backward")
                         loss_acc.backward()
 
-                        # Offload pass-1 grads to CPU to free GPU memory for pass 2
-                        grad_acc = [p.grad.to('cpu', non_blocking=True) if p.grad is not None else torch.zeros_like(p, device='cpu') for p in self.actor_module.parameters()]
+                        # Clone pass-1 grads (keep on GPU — H100 has plenty of VRAM)
+                        grad_acc = [p.grad.clone() if p.grad is not None else torch.zeros_like(p) for p in self.actor_module.parameters()]
                         del entropy_acc, log_prob_acc, loss_acc
 
                         self.actor_optimizer.zero_grad()
@@ -343,16 +378,39 @@ class DataParallelPPOActor(BasePPOActor):
                         entropy_loss_eff = verl_F.masked_mean(entropy_eff, response_mask)
                         pg_loss_eff, pg_clipfrac_eff, _ = core_algos.compute_policy_loss(old_log_prob, log_prob_eff, eff_adv, response_mask, clip_ratio)
                         loss_eff = (pg_loss_eff - entropy_loss_eff * entropy_coeff) / self.gradient_accumulation
+                        _diag(f"  mb{batch_idx} pass2 backward")
                         loss_eff.backward()
                         del entropy_eff, log_prob_eff, loss_eff
+                        torch.cuda.empty_cache()
 
-                        # Bring pass-1 grads back to GPU and combine via PC-Grad projection
-                        device = next(iter(self.actor_module.parameters())).device
-                        grad_acc = [g.to(device, non_blocking=True) for g in grad_acc]
-                        torch.cuda.current_stream().synchronize()
-                        grad_eff = [p.grad if p.grad is not None else torch.zeros_like(p) for p in self.actor_module.parameters()]
-                        combined_grads, conflict_val = pc_grad_combine(grad_acc, grad_eff)
-                        del grad_acc, grad_eff
+                        _diag(f"  mb{batch_idx} pc-grad project")
+                        # --- PC-Grad projection ---
+                        # Phase 1: Compute dot product and norms
+                        dot_product, norm_a_sq, norm_b_sq = 0.0, 0.0, 0.0
+                        for i, p in enumerate(self.actor_module.parameters()):
+                            g_a = grad_acc[i]
+                            g_b = p.grad if p.grad is not None else torch.zeros_like(p)
+                            dot_product += torch.sum(g_a * g_b).item()
+                            norm_a_sq += torch.sum(g_a * g_a).item()
+                            norm_b_sq += torch.sum(g_b * g_b).item()
+
+                        if dot_product < 0:
+                            coeff_a = 1.0 - dot_product / (norm_a_sq + 1e-8)
+                            coeff_b = 1.0 - dot_product / (norm_b_sq + 1e-8)
+                            conflict_val = 1.0
+                        else:
+                            coeff_a = 1.0
+                            coeff_b = 1.0
+                            conflict_val = 0.0
+
+                        # Phase 2: Apply projection and restore accumulated grads
+                        for i, p in enumerate(self.actor_module.parameters()):
+                            if p.grad is None:
+                                p.grad = torch.zeros_like(p)
+                            p.grad.mul_(coeff_b).add_(grad_acc[i], alpha=coeff_a)
+                            if accumulated_grads is not None:
+                                p.grad.add_(accumulated_grads[i])
+                        del grad_acc, accumulated_grads
 
                         append_to_dict(metrics, {'actor/pc_grad_conflict_rate': conflict_val})
                         append_to_dict(metrics, {'actor/pg_loss_acc': pg_loss_acc.detach().item()})
@@ -361,20 +419,6 @@ class DataParallelPPOActor(BasePPOActor):
                         append_to_dict(metrics, {'actor/pg_clipfrac_eff': pg_clipfrac_eff.detach().item()})
                         append_to_dict(metrics, {'actor/entropy_loss_acc': entropy_loss.detach().item()})
                         append_to_dict(metrics, {'actor/entropy_loss_eff': entropy_loss_eff.detach().item()})
-
-                        # Restore accumulated grads (from CPU) + add combined projected grads
-                        if accumulated_grads is not None:
-                            accumulated_grads = [g.to(device, non_blocking=True) for g in accumulated_grads]
-                            torch.cuda.current_stream().synchronize()
-                        for i, p in enumerate(self.actor_module.parameters()):
-                            if p.grad is None:
-                                p.grad = torch.zeros_like(p)
-                            if accumulated_grads is not None:
-                                p.grad.copy_(accumulated_grads[i])
-                                p.grad.add_(combined_grads[i])
-                            else:
-                                p.grad.copy_(combined_grads[i])
-                        del accumulated_grads, combined_grads
 
                 else:
                     # Baseline single-objective path
@@ -404,6 +448,7 @@ class DataParallelPPOActor(BasePPOActor):
                 append_to_dict(metrics, {'actor/entropy_loss': entropy_loss.detach().item()})
 
             torch.cuda.empty_cache()
+            _diag(f"mini-batch {batch_idx} optimizer step")
             grad_norm = self._optimizer_step()
             append_to_dict(metrics, {'actor/grad_norm': grad_norm.detach().item()})
 
