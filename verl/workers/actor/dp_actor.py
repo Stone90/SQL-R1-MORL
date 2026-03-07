@@ -317,10 +317,9 @@ class DataParallelPPOActor(BasePPOActor):
                         # Full dual-pass PC-Grad path
 
                         # Save accumulated grads from prior micro-batches
-                        # Offload to CPU to free GPU memory for two forward+backward passes
                         first_grad = next(iter(self.actor_module.parameters())).grad
                         if first_grad is not None:
-                            accumulated_grads = [p.grad.to('cpu', non_blocking=True) for p in self.actor_module.parameters()]
+                            accumulated_grads = [p.grad.clone() for p in self.actor_module.parameters()]
                         else:
                             accumulated_grads = None
                         self.actor_optimizer.zero_grad()
@@ -344,12 +343,11 @@ class DataParallelPPOActor(BasePPOActor):
                         loss_acc = (pg_loss_acc - entropy_loss * entropy_coeff - kl_loss_term) / self.gradient_accumulation
                         loss_acc.backward()
 
-                        # Offload pass-1 grads to CPU to free GPU memory for pass 2
-                        grad_acc = [p.grad.to('cpu', non_blocking=True) if p.grad is not None else torch.zeros_like(p, device='cpu') for p in self.actor_module.parameters()]
+                        # Clone pass-1 grads (keep on GPU — H100 has plenty of VRAM)
+                        grad_acc = [p.grad.clone() if p.grad is not None else torch.zeros_like(p) for p in self.actor_module.parameters()]
                         del entropy_acc, log_prob_acc, loss_acc
 
                         self.actor_optimizer.zero_grad()
-                        import gc; gc.collect()
                         torch.cuda.empty_cache()
 
                         # Pass 2: Efficiency (forward + backward, no KL -- applied once in accuracy pass)
@@ -361,19 +359,15 @@ class DataParallelPPOActor(BasePPOActor):
                         del entropy_eff, log_prob_eff, loss_eff
                         torch.cuda.empty_cache()
 
-                        # --- PC-Grad projection: streaming per-parameter to minimize GPU memory ---
-                        device = next(iter(self.actor_module.parameters())).device
-
-                        # Phase 1: Compute dot product and norms (one param at a time on GPU)
+                        # --- PC-Grad projection ---
+                        # Phase 1: Compute dot product and norms
                         dot_product, norm_a_sq, norm_b_sq = 0.0, 0.0, 0.0
                         for i, p in enumerate(self.actor_module.parameters()):
-                            g_a = grad_acc[i].to(device, non_blocking=True)
-                            torch.cuda.current_stream().synchronize()
+                            g_a = grad_acc[i]
                             g_b = p.grad if p.grad is not None else torch.zeros_like(p)
                             dot_product += torch.sum(g_a * g_b).item()
                             norm_a_sq += torch.sum(g_a * g_a).item()
                             norm_b_sq += torch.sum(g_b * g_b).item()
-                            del g_a
 
                         if dot_product < 0:
                             coeff_a = 1.0 - dot_product / (norm_a_sq + 1e-8)
@@ -384,22 +378,13 @@ class DataParallelPPOActor(BasePPOActor):
                             coeff_b = 1.0
                             conflict_val = 0.0
 
-                        # Phase 2: Apply projection and restore accumulated grads (one param at a time)
+                        # Phase 2: Apply projection and restore accumulated grads
                         for i, p in enumerate(self.actor_module.parameters()):
-                            g_a = grad_acc[i].to(device, non_blocking=True)
-                            torch.cuda.current_stream().synchronize()
                             if p.grad is None:
                                 p.grad = torch.zeros_like(p)
-                            # combined = coeff_a * g_a + coeff_b * p.grad
-                            p.grad.mul_(coeff_b).add_(g_a, alpha=coeff_a)
-                            del g_a
-                            grad_acc[i] = None  # free CPU memory
+                            p.grad.mul_(coeff_b).add_(grad_acc[i], alpha=coeff_a)
                             if accumulated_grads is not None:
-                                acc_g = accumulated_grads[i].to(device, non_blocking=True)
-                                torch.cuda.current_stream().synchronize()
-                                p.grad.add_(acc_g)
-                                del acc_g
-                                accumulated_grads[i] = None
+                                p.grad.add_(accumulated_grads[i])
                         del grad_acc, accumulated_grads
 
                         append_to_dict(metrics, {'actor/pc_grad_conflict_rate': conflict_val})

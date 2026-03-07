@@ -20,7 +20,7 @@ export VLLM_ATTENTION_BACKEND=XFORMERS
 export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
 export MALLOC_TRIM_THRESHOLD_=0
 export RAY_memory_monitor_refresh_ms=0
-export RAY_object_store_memory=10737418240
+export RAY_object_store_memory=4294967296
 export VLLM_WORKER_MULTIPROC_METHOD=spawn
 export NCCL_DEBUG=INFO
 export NCCL_TIMEOUT=1800
@@ -100,6 +100,8 @@ echo "${GREEN}>>>${RESET} ${BOLD}GPU Info${RESET}"
 nvidia-smi --query-gpu=index,name,memory.total --format=csv,noheader | while read line; do
     echo "    ${GREEN}✓${RESET} GPU $line"
 done
+echo "    ${GREEN}✓${RESET} System RAM:"
+free -h | head -2 | while read line; do echo "      $line"; done
 echo ""
 
 # ── Show sample data ──
@@ -141,7 +143,7 @@ echo "    ${YELLOW}→${RESET} Learning rate: 2e-7"
 echo "    ${YELLOW}→${RESET} KL loss:      low_var_kl (coef=0.001)"
 echo "    ${YELLOW}→${RESET} Rollout:      n=16, temp=0.7, vLLM (gpu_mem=0.5)"
 echo "    ${YELLOW}→${RESET} Dynamic bsz:  max_token_len=2048/gpu"
-echo "    ${YELLOW}→${RESET} FSDP:         size=2, grad_ckpt=True, param+grad+optim_offload=True"
+echo "    ${YELLOW}→${RESET} FSDP:         size=2, grad_ckpt=True, optim_offload=True"
 echo "    ${YELLOW}→${RESET} Save/test:    every 100 steps"
 echo ""
 
@@ -172,8 +174,8 @@ python -m verl.trainer.main_ppo \
     actor_rollout_ref.actor.kl_loss_type=low_var_kl \
     actor_rollout_ref.actor.fsdp_config.fsdp_size=2 \
     actor_rollout_ref.model.enable_gradient_checkpointing=True \
-    actor_rollout_ref.actor.fsdp_config.param_offload=True \
-    actor_rollout_ref.actor.fsdp_config.grad_offload=True \
+    actor_rollout_ref.actor.fsdp_config.param_offload=False \
+    actor_rollout_ref.actor.fsdp_config.grad_offload=False \
     actor_rollout_ref.actor.fsdp_config.optimizer_offload=True \
     actor_rollout_ref.rollout.log_prob_micro_batch_size=4 \
     actor_rollout_ref.rollout.tensor_model_parallel_size=1 \
@@ -182,7 +184,7 @@ python -m verl.trainer.main_ppo \
     actor_rollout_ref.rollout.n=16 \
     actor_rollout_ref.rollout.temperature=0.7 \
     actor_rollout_ref.ref.log_prob_micro_batch_size=4 \
-    actor_rollout_ref.ref.fsdp_config.param_offload=True \
+    actor_rollout_ref.ref.fsdp_config.param_offload=False \
     actor_rollout_ref.actor.enable_pc_grad=True \
     algorithm.kl_ctrl.kl_coef=0.001 \
     trainer.critic_warmup=0 \
