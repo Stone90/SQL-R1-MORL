@@ -267,11 +267,20 @@ class RayWorkerGroup(WorkerGroup):
                     register_center_actor = None
                     for _ in range(120):
                         if f"{self.name_prefix}_register_center" not in list_named_actors():
+                            if not self._is_worker_alive(worker):
+                                break
                             time.sleep(1)
                         else:
                             register_center_actor = ray.get_actor(f"{self.name_prefix}_register_center")
                             break
-                    assert register_center_actor is not None, f"failed to get register_center_actor: {self.name_prefix}_register_center in {list_named_actors(all_namespaces=True)}"
+                    if register_center_actor is None:
+                        worker_state = get_actor(worker._actor_id.hex())
+                        raise RuntimeError(
+                            f"Rank-0 worker failed to create register_center actor. "
+                            f"Worker state: {worker_state}. "
+                            f"Named actors: {list_named_actors(all_namespaces=True)}. "
+                            f"This usually means the worker crashed during init — check Ray worker logs."
+                        )
                     rank_zero_info = ray.get(register_center_actor.get_rank_zero_info.remote())
                     self._master_addr, self._master_port = rank_zero_info['MASTER_ADDR'], rank_zero_info['MASTER_PORT']
                     # print(f"rank_zero_info: {rank_zero_info}")
