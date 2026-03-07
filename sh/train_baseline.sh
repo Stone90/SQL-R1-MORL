@@ -143,7 +143,7 @@ echo "    ${YELLOW}→${RESET} Learning rate: 2e-7"
 echo "    ${YELLOW}→${RESET} KL loss:      low_var_kl (coef=0.001)"
 echo "    ${YELLOW}→${RESET} Cases:        $NUM_CASES → $TOTAL_TRAINING_STEPS steps"
 echo "    ${YELLOW}→${RESET} Rollout:      n=16, temp=0.7, vLLM (gpu_mem=0.5)"
-echo "    ${YELLOW}→${RESET} Dynamic bsz:  max_token_len=2048/gpu"
+echo "    ${YELLOW}→${RESET} Dynamic bsz:  max_token_len=16384/gpu"
 echo "    ${YELLOW}→${RESET} FSDP:         size=2, grad_ckpt=True, optim_offload=True"
 echo "    ${YELLOW}→${RESET} Save/test:    every 100 steps"
 echo ""
@@ -169,7 +169,7 @@ python -m verl.trainer.main_ppo \
     actor_rollout_ref.actor.ppo_mini_batch_size=4 \
     actor_rollout_ref.actor.ppo_micro_batch_size=1 \
     actor_rollout_ref.actor.use_dynamic_bsz=True \
-    actor_rollout_ref.actor.ppo_max_token_len_per_gpu=2048 \
+    actor_rollout_ref.actor.ppo_max_token_len_per_gpu=16384 \
     actor_rollout_ref.actor.use_kl_loss=True \
     actor_rollout_ref.actor.kl_loss_coef=0.001 \
     actor_rollout_ref.actor.kl_loss_type=low_var_kl \
