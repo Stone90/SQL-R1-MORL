@@ -25,10 +25,10 @@ export SYNSQL_DB_DIR
 
 # Environment Variables
 RUN_ID=3B
-GPU_ENV=2xA100
+GPU_ENV=2xH100
 MODEL_ENV=SQL-R1-3B
 PROJECT_NAME=SQL-R1-MORL
-NUM_CASES=${NUM_CASES:-1024}        # number of training cases to run (default: 1024)
+NUM_CASES=${NUM_CASES:-800}         # number of training cases to run (default: 800 = 1 epoch)
 TRAIN_BATCH_SIZE=16
 
 # Paths
@@ -69,7 +69,7 @@ if [ ! -f "$DATA_DIR_PATH/train.parquet" ] || [ ! -f "$DATA_DIR_PATH/test.parque
 fi
 echo "    ${GREEN}✓${RESET} Data: $DATA_DIR_PATH/train.parquet, test.parquet"
 
-DB_COUNT=$(find "$SYNSQL_DB_DIR" -name "*.sqlite" 2>/dev/null | wc -l)
+DB_COUNT=$(find -L "$SYNSQL_DB_DIR" -name "*.sqlite" 2>/dev/null | wc -l)
 if [ "$DB_COUNT" -eq 0 ]; then
     echo "    ${RED}✗${RESET} No databases found at $SYNSQL_DB_DIR/"
     echo "    ${YELLOW}→${RESET} Run: sh sh/setup_data.sh"
