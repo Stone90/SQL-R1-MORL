@@ -20,6 +20,8 @@ export NCCL_DEBUG=INFO
 export NCCL_TIMEOUT=1800
 
 DATA_DIR_PATH=data
+SYNSQL_DB_DIR=${SYNSQL_DB_DIR:-databases}
+export SYNSQL_DB_DIR
 
 # Environment Variables
 RUN_ID=3B-baseline
@@ -66,6 +68,14 @@ if [ ! -f "$DATA_DIR_PATH/train.parquet" ] || [ ! -f "$DATA_DIR_PATH/test.parque
     exit 1
 fi
 echo "    ${GREEN}✓${RESET} Data: $DATA_DIR_PATH/train.parquet, test.parquet"
+
+DB_COUNT=$(find "$SYNSQL_DB_DIR" -name "*.sqlite" 2>/dev/null | wc -l)
+if [ "$DB_COUNT" -eq 0 ]; then
+    echo "    ${RED}✗${RESET} No databases found at $SYNSQL_DB_DIR/"
+    echo "    ${YELLOW}→${RESET} Run: sh sh/setup_data.sh"
+    exit 1
+fi
+echo "    ${GREEN}✓${RESET} Databases: $DB_COUNT SQLite files in $SYNSQL_DB_DIR/"
 
 if [ -n "$WANDB_API_KEY" ]; then
     echo "    ${GREEN}✓${RESET} WANDB_API_KEY loaded from .env"
