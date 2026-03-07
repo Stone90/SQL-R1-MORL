@@ -177,11 +177,23 @@ class DataParallelPPOActor(BasePPOActor):
     def _optimizer_step(self):
         assert self.config.grad_clip is not None
 
+        # Deferred optimizer offload: load states to GPU just before step
+        is_offload = self.config.fsdp_config.get('optimizer_offload', False)
+        if is_offload:
+            from verl.utils.fsdp_utils import load_fsdp_optimizer
+            load_fsdp_optimizer(optimizer=self.actor_optimizer, device_id=torch.cuda.current_device())
+
         if isinstance(self.actor_module, FSDP):
             grad_norm = self.actor_module.clip_grad_norm_(max_norm=self.config.grad_clip)
         else:
             grad_norm = torch.nn.utils.clip_grad_norm_(self.actor_module.parameters(), max_norm=self.config.grad_clip)
         self.actor_optimizer.step()
+
+        # Immediately offload optimizer states back to CPU
+        if is_offload:
+            from verl.utils.fsdp_utils import offload_fsdp_optimizer
+            offload_fsdp_optimizer(optimizer=self.actor_optimizer)
+
         return grad_norm
 
     def compute_log_prob(self, data: DataProto) -> torch.Tensor:
