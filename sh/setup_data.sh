@@ -84,12 +84,20 @@ else
         fail "Model download incomplete — tokenizer_config.json missing from $MODEL_PATH"
         exit 1
     fi
-    if [ ! -f "$MODEL_PATH/tokenizer.json" ] && [ ! -f "$MODEL_PATH/vocab.json" ]; then
-        fail "Model download incomplete — no tokenizer files (tokenizer.json or vocab.json) in $MODEL_PATH"
-        exit 1
-    fi
     ok "Model downloaded to $MODEL_PATH"
     info "Files: $(ls "$MODEL_PATH"/*.safetensors 2>/dev/null | wc -l) safetensor shards"
+fi
+
+# Validate tokenizer files exist (catches incomplete prior downloads)
+if [ ! -f "$MODEL_PATH/tokenizer.json" ] && [ ! -f "$MODEL_PATH/vocab.json" ]; then
+    fail "Model incomplete — no tokenizer files found. Re-downloading..."
+    hf download "MPX0222forHF/$MODEL_NAME" --local-dir "$MODEL_PATH" \
+        --exclude "*.pt" --exclude "*.bin"
+    if [ ! -f "$MODEL_PATH/tokenizer.json" ] && [ ! -f "$MODEL_PATH/vocab.json" ]; then
+        fail "Re-download failed — still no tokenizer files in $MODEL_PATH"
+        exit 1
+    fi
+    ok "Re-download fixed missing tokenizer files"
 fi
 
 # ── 2. Training data: SynSQL-2.5M (parquet) ──
