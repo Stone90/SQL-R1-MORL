@@ -10,6 +10,12 @@ if [ -f "$VENV_PATH/bin/activate" ]; then
     . "$VENV_PATH/bin/activate"
 fi
 
+# Clean up stale Ray processes from previous runs
+ray stop --force 2>/dev/null
+pkill -9 -f "ray::" 2>/dev/null
+pkill -9 -f "gcs_server" 2>/dev/null
+rm -rf /tmp/ray 2>/dev/null
+
 export VLLM_ATTENTION_BACKEND=XFORMERS
 export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
 export MALLOC_TRIM_THRESHOLD_=0
