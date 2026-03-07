@@ -141,7 +141,7 @@ echo "    ${YELLOW}→${RESET} Learning rate: 2e-7"
 echo "    ${YELLOW}→${RESET} KL loss:      low_var_kl (coef=0.001)"
 echo "    ${YELLOW}→${RESET} Rollout:      n=16, temp=0.7, vLLM (gpu_mem=0.5)"
 echo "    ${YELLOW}→${RESET} Dynamic bsz:  max_token_len=2048/gpu"
-echo "    ${YELLOW}→${RESET} FSDP:         size=2, grad_ckpt=True, optim_offload=True"
+echo "    ${YELLOW}→${RESET} FSDP:         size=2, grad_ckpt=True, param+grad+optim_offload=True"
 echo "    ${YELLOW}→${RESET} Save/test:    every 100 steps"
 echo ""
 
@@ -172,8 +172,8 @@ python -m verl.trainer.main_ppo \
     actor_rollout_ref.actor.kl_loss_type=low_var_kl \
     actor_rollout_ref.actor.fsdp_config.fsdp_size=2 \
     actor_rollout_ref.model.enable_gradient_checkpointing=True \
-    actor_rollout_ref.actor.fsdp_config.param_offload=False \
-    actor_rollout_ref.actor.fsdp_config.grad_offload=False \
+    actor_rollout_ref.actor.fsdp_config.param_offload=True \
+    actor_rollout_ref.actor.fsdp_config.grad_offload=True \
     actor_rollout_ref.actor.fsdp_config.optimizer_offload=True \
     actor_rollout_ref.rollout.log_prob_micro_batch_size=4 \
     actor_rollout_ref.rollout.tensor_model_parallel_size=1 \
@@ -182,7 +182,7 @@ python -m verl.trainer.main_ppo \
     actor_rollout_ref.rollout.n=16 \
     actor_rollout_ref.rollout.temperature=0.7 \
     actor_rollout_ref.ref.log_prob_micro_batch_size=4 \
-    actor_rollout_ref.ref.fsdp_config.param_offload=False \
+    actor_rollout_ref.ref.fsdp_config.param_offload=True \
     actor_rollout_ref.actor.enable_pc_grad=True \
     algorithm.kl_ctrl.kl_coef=0.001 \
     trainer.critic_warmup=0 \
