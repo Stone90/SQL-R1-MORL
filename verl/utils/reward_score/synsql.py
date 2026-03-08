@@ -63,11 +63,13 @@ def _explain_plan_cost(cursor, sql: str) -> Optional[float]:
 
     Lower cost = more efficient plan. Returns None if the query fails to explain.
 
-    Scoring:
-        - SCAN TABLE (full table scan): 10 points each
-        - USE TEMP B-TREE (temp sorting/grouping): 5 points each
-        - SEARCH TABLE USING INDEX (index lookup): 1 point each
-        - Other operations: 0 points
+    Scoring (per row, multiplied by depth factor 1 + 0.1*selectid):
+        - SCAN TABLE (full table scan): 10 points
+        - SEARCH TABLE/SUBQUERY with COVERING INDEX: 0.5 points
+        - SEARCH TABLE/SUBQUERY with regular index: 1 point
+        - USE TEMP B-TREE (temp sorting/grouping): 5 points
+        - CORRELATED/COMPOUND SUBQUERY: 8 points
+        - SCALAR SUBQUERY: 3 points
     """
     try:
         cursor.execute(f"EXPLAIN QUERY PLAN {sql}")
@@ -78,12 +80,28 @@ def _explain_plan_cost(cursor, sql: str) -> Optional[float]:
     cost = 0.0
     for row in rows:
         detail = str(row[-1]).upper() if row else ""
+        try:
+            depth = int(row[0]) if row else 0
+        except (ValueError, TypeError, IndexError):
+            depth = 0
+        depth_mult = 1.0 + 0.1 * depth
+
+        row_cost = 0.0
         if "SCAN TABLE" in detail:
-            cost += 10.0
+            row_cost += 10.0
         elif "SEARCH TABLE" in detail or "SEARCH SUBQUERY" in detail:
-            cost += 1.0
+            if "COVERING INDEX" in detail:
+                row_cost += 0.5
+            else:
+                row_cost += 1.0
         if "USE TEMP B-TREE" in detail:
-            cost += 5.0
+            row_cost += 5.0
+        if "CORRELATED" in detail:
+            row_cost += 8.0
+        if "SCALAR SUBQUERY" in detail:
+            row_cost += 3.0
+
+        cost += row_cost * depth_mult
     return cost
 
 
@@ -111,12 +129,16 @@ def _compute_efficiency_reward(db_path: str, pred_sql: str, gold_sql: str, exec_
     if pred_cost is None or gold_cost is None:
         return 0.0
 
-    # Pred is at least as efficient as gold
-    if pred_cost <= gold_cost:
+    if gold_cost == 0 and pred_cost == 0:
         reward = 1.0
+    elif gold_cost == 0:
+        reward = 0.5
+    elif pred_cost == 0:
+        reward = min(gold_cost / 1e-6, 2.0)  # effectively 2.0
+    elif pred_cost <= gold_cost:
+        reward = min(gold_cost / pred_cost, 2.0)  # bonus for beating gold
     else:
-        # Penalize proportionally: reward = gold_cost / pred_cost
-        reward = gold_cost / pred_cost if pred_cost > 0 else 0.0
+        reward = gold_cost / pred_cost  # penalty, < 1.0
 
     # Half credit for Mismatch (executable but wrong result)
     if exec_status == 'Mismatch':

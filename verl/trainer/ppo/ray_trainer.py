@@ -152,12 +152,22 @@ def compute_advantage(data: DataProto, adv_estimator, gamma=1.0, lam=1.0, num_re
             data.meta_info['accuracy_reward_raw_mean'] = torch.mean(acc_raw).item()
             data.meta_info['efficiency_reward_raw_mean'] = torch.mean(eff_raw).item()
 
-            for key in ['accuracy_rewards', 'efficiency_rewards']:
-                obj_adv, _ = core_algos.compute_grpo_outcome_advantage(
-                    token_level_rewards=data.batch[key],
-                    eos_mask=response_mask,
-                    index=index)
-                data.batch[key] = obj_adv
+            # Accuracy: standard GRPO within-group normalization
+            acc_adv, _ = core_algos.compute_grpo_outcome_advantage(
+                token_level_rewards=data.batch['accuracy_rewards'],
+                eos_mask=response_mask,
+                index=index)
+            data.batch['accuracy_rewards'] = acc_adv
+
+            # Efficiency: batch-level mean-centering (preserves signal with low within-group variance)
+            eff_adv, _ = core_algos.compute_batch_centered_advantage(
+                token_level_rewards=data.batch['efficiency_rewards'],
+                eos_mask=response_mask)
+            data.batch['efficiency_rewards'] = eff_adv
+
+            eff_adv_scalar = (data.batch['efficiency_rewards'] * (data.batch['efficiency_rewards'] != 0)).sum(dim=-1)
+            data.meta_info['efficiency_advantage_std'] = torch.std(eff_adv_scalar).item()
+            data.meta_info['efficiency_advantage_nonzero_frac'] = (eff_adv_scalar != 0).float().mean().item()
 
     elif adv_estimator == 'reinforce_plus_plus':
         token_level_rewards = data.batch['token_level_rewards']
@@ -329,6 +339,10 @@ def compute_reward_metrics(batch):
         eff_adv = batch.batch['efficiency_rewards'].sum(-1)
         reward_metrics["reward/accuracy_advantage_mean"] = torch.mean(acc_adv).detach().item()
         reward_metrics["reward/efficiency_advantage_mean"] = torch.mean(eff_adv).detach().item()
+
+    if 'efficiency_advantage_std' in batch.meta_info:
+        reward_metrics["reward/efficiency_advantage_std"] = batch.meta_info['efficiency_advantage_std']
+        reward_metrics["reward/efficiency_advantage_nonzero_frac"] = batch.meta_info['efficiency_advantage_nonzero_frac']
 
     return reward_metrics
 

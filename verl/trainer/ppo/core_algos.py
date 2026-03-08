@@ -156,6 +156,21 @@ def compute_grpo_outcome_advantage(token_level_rewards: torch.Tensor,
     return scores, scores
 
 
+def compute_batch_centered_advantage(token_level_rewards: torch.Tensor,
+                                      eos_mask: torch.Tensor):
+    """Batch-level mean-centering for objectives with low within-group variance."""
+    response_length = token_level_rewards.shape[-1]
+    non_zero_mask = (token_level_rewards != 0)
+    scores = (token_level_rewards * non_zero_mask).sum(dim=-1)
+
+    with torch.no_grad():
+        batch_mean = torch.mean(scores)
+        advantages = scores - batch_mean
+        advantages = advantages.unsqueeze(-1).tile([1, response_length]) * eos_mask
+
+    return advantages, advantages
+
+
 def compute_reinforce_plus_plus_outcome_advantage(token_level_rewards: torch.Tensor,
                                    eos_mask: torch.Tensor,
                                    gamma: torch.Tensor,
