@@ -84,6 +84,12 @@ class RayResourcePool(ResourcePool):
 
         ray.get([pg.ready() for pg in pgs])
 
+        print(f"[ResourcePool] Placement groups ready: {len(pgs)} PGs, "
+              f"bundles_per_pg={[pg.bundle_count for pg in pgs]}, "
+              f"max_colocate={self.max_collocate_count}")
+        print(f"[ResourcePool] Cluster resources: {ray.cluster_resources()}")
+        print(f"[ResourcePool] Available resources: {ray.available_resources()}")
+
         self.pgs = pgs
         return pgs
 
@@ -268,7 +274,7 @@ class RayWorkerGroup(WorkerGroup):
 
                 if rank == 0:
                     register_center_actor = None
-                    for _ in range(120):
+                    for _ in range(300):
                         if f"{self.name_prefix}_register_center" not in list_named_actors():
                             if not self._is_worker_alive(worker):
                                 break

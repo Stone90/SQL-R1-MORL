@@ -106,6 +106,15 @@ def main(config):
         # this is for local ray cluster
         ray.init(runtime_env={'env_vars': {'TOKENIZERS_PARALLELISM': 'true', 'NCCL_DEBUG': 'WARN'}})
 
+    resources = ray.cluster_resources()
+    print(f"[Ray] Cluster resources: {resources}")
+    gpu_count = resources.get('GPU', 0)
+    if gpu_count < 1:
+        raise RuntimeError(
+            f"Ray sees {gpu_count} GPUs. Check CUDA drivers, nvidia-smi, "
+            f"and container GPU passthrough (--gpus all)."
+        )
+
     ray.get(main_task.remote(config))
 
 
@@ -191,6 +200,14 @@ def main_task(config):
                             ray_worker_group_cls=ray_worker_group_cls,
                             reward_fn=reward_fn,
                             val_reward_fn=val_reward_fn)
+    resources = ray.cluster_resources()
+    n_gpus = config.trainer.n_gpus_per_node * config.trainer.nnodes
+    if resources.get('GPU', 0) < n_gpus:
+        raise RuntimeError(
+            f"Need {n_gpus} GPUs but Ray only sees {resources.get('GPU', 0)}. "
+            f"Available resources: {resources}"
+        )
+
     trainer.init_workers()
     trainer.fit()
 
