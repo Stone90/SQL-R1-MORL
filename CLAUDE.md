@@ -83,3 +83,4 @@ Set in `sh/train.sh`: `VLLM_ATTENTION_BACKEND=XFORMERS`, `PYTORCH_CUDA_ALLOC_CON
 - Checkpoints and logs written to `logs/`
 - Commit messages: short one-liners
 - Do NOT commit or push unless the user explicitly says to — always wait for their go-ahead
+- Always use `scripts/summarize_wandb.py` to fetch and analyze W&B runs (WandB pages are JS-rendered SPAs that WebFetch cannot scrape)
