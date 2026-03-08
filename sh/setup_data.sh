@@ -106,14 +106,8 @@ TEST_FILE="$DATA_DIR/test.parquet"
 
 banner "Step 2/5: Download Training Data"
 
-TRAIN_SIZE=$(stat -c%s "$TRAIN_FILE" 2>/dev/null || echo 0)
-TEST_SIZE=$(stat -c%s "$TEST_FILE" 2>/dev/null || echo 0)
-# Real files are ~15M and ~3.7M; empty parquets with just schema are a few KB
-if [ "$TRAIN_SIZE" -gt 100000 ] && [ "$TEST_SIZE" -gt 100000 ]; then
-    ok "Training data already exists at $DATA_DIR — skipping download"
-    info "train.parquet: $(du -h "$TRAIN_FILE" | cut -f1)"
-    info "test.parquet:  $(du -h "$TEST_FILE" | cut -f1)"
-elif [ "$USING_BUNDLED" = true ]; then
+if [ "$USING_BUNDLED" = true ]; then
+    # Always copy from bundled source (ensures data/ stays in sync after git pull)
     step "Copying bundled training data from dataset/..."
     mkdir -p "$DATA_DIR"
     cp "$BUNDLED_DIR/train.parquet" "$TRAIN_FILE"
