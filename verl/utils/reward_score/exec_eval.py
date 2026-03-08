@@ -225,10 +225,11 @@ def eval_exec_match(db: str, p_str: str, g_str: str, plug_value: bool, keep_dist
             # loop.run_until_complete(asyncio.wait(exec_on_db(db_path, pred)))
             g_flag, g_denotation = asyncio.run(exec_on_db(db_path, g_str))
             p_flag, p_denotation = asyncio.run(exec_on_db(db_path, pred))
-            print(f"[g_flag]: {g_flag}")
-            print(f"[p_flag]: {p_flag}")
-            print(f"[g_denotation]: {g_denotation}")
-            print(f"[p_denotation]: {p_denotation}")
+
+            print(f"g_flag: {g_flag}")
+            print(f"p_flag: {p_flag}")
+            print(f"g_denotation: {g_denotation}")
+            print(f"p_denotation: {p_denotation}")
 
             # we should expect the gold to be succesfully executed on the database
 

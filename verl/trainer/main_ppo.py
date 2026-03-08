@@ -18,6 +18,7 @@ Note that we don't combine the main with ray_trainer as ray_trainer is used by o
 import faulthandler
 faulthandler.enable()
 
+from concurrent.futures import ThreadPoolExecutor
 from verl import DataProto
 import torch
 import ast
@@ -52,23 +53,18 @@ class RewardManager():
         accuracy_reward_tensor = torch.zeros_like(data.batch['responses'], dtype=torch.float32)
         efficiency_reward_tensor = torch.zeros_like(data.batch['responses'], dtype=torch.float32)
 
-        already_print_data_sources = {}
-
+        # Pre-extract all inputs on the main thread (DataProto indexing isn't thread-safe)
+        items = []
         for i in range(len(data)):
-            data_item = data[i]  # DataProtoItem
-
+            data_item = data[i]
             prompt_ids = data_item.batch['prompts']
-
             prompt_length = prompt_ids.shape[-1]
-
             valid_prompt_length = data_item.batch['attention_mask'][:prompt_length].sum()
             valid_prompt_ids = prompt_ids[-valid_prompt_length:]
-
             response_ids = data_item.batch['responses']
             valid_response_length = data_item.batch['attention_mask'][prompt_length:].sum()
             valid_response_ids = response_ids[:valid_response_length]
 
-            # decode
             sequences = torch.cat((valid_prompt_ids, valid_response_ids))
             sequences_str = self.tokenizer.decode(sequences)
 
@@ -76,20 +72,29 @@ class RewardManager():
             if isinstance(ground_truth, str):
                 ground_truth = ast.literal_eval(ground_truth)
 
-            # select rm_score
             data_source = data_item.non_tensor_batch['data_source']
             compute_score_fn = _select_rm_score_fn(data_source)
+            items.append((i, sequences_str, ground_truth, compute_score_fn, int(valid_response_length), data_source))
 
-            accuracy_reward, efficiency_reward = compute_score_fn(solution_str=sequences_str, ground_truth=ground_truth)
-            accuracy_reward_tensor[i, valid_response_length - 1] = accuracy_reward
-            efficiency_reward_tensor[i, valid_response_length - 1] = efficiency_reward
+        # Score in parallel — work is I/O-bound (SQLite reads)
+        def _score(item):
+            idx, seq_str, gt, fn, vrl, ds = item
+            acc, eff = fn(solution_str=seq_str, ground_truth=gt)
+            return idx, acc, eff, vrl, ds
 
-            if data_source not in already_print_data_sources:
-                already_print_data_sources[data_source] = 0
+        with ThreadPoolExecutor(max_workers=32) as pool:
+            results = list(pool.map(_score, items))
 
-            if already_print_data_sources[data_source] < self.num_examine:
-                already_print_data_sources[data_source] += 1
-                print(sequences_str)
+        already_print_data_sources = {}
+        for idx, acc, eff, vrl, ds in results:
+            accuracy_reward_tensor[idx, vrl - 1] = acc
+            efficiency_reward_tensor[idx, vrl - 1] = eff
+
+            if ds not in already_print_data_sources:
+                already_print_data_sources[ds] = 0
+            if already_print_data_sources[ds] < self.num_examine:
+                already_print_data_sources[ds] += 1
+                print(items[idx][1])  # sequences_str
 
         data.batch["accuracy_rewards"] = accuracy_reward_tensor
         data.batch["efficiency_rewards"] = efficiency_reward_tensor
