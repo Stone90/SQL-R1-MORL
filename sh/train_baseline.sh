@@ -37,7 +37,7 @@ RUN_ID=3B-baseline
 GPU_ENV=2xH100
 MODEL_ENV=SQL-R1-3B
 PROJECT_NAME=SQL-R1-MORL
-NUM_CASES=${NUM_CASES:-800}         # number of training cases to run (default: 800 = 1 epoch)
+NUM_CASES=${NUM_CASES:-6400}        # number of training cases to run (default: 6400 = 1 epoch)
 TRAIN_BATCH_SIZE=16
 
 # Paths

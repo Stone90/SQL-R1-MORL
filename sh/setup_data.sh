@@ -33,7 +33,7 @@ fail()   { echo "    ${RED}✗${RESET} $1"; }
 BUNDLED_DIR="$PROJ_DIR/dataset"
 USING_BUNDLED=false
 
-# Detect bundled dataset (self-contained 1K dataset with SQLite DBs)
+# Detect bundled dataset (self-contained dataset with SQLite DBs)
 if [ -f "$BUNDLED_DIR/train.parquet" ] && [ -f "$BUNDLED_DIR/test.parquet" ] && \
    [ -n "$(find "$BUNDLED_DIR/databases" -name '*.sqlite' 2>/dev/null | head -1)" ]; then
     USING_BUNDLED=true
