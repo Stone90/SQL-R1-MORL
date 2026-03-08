@@ -145,7 +145,7 @@ echo "    ${YELLOW}→${RESET} KL loss:      low_var_kl (coef=0.001)"
 echo "    ${YELLOW}→${RESET} Rollout:      n=16, temp=0.7, vLLM (gpu_mem=0.5)"
 echo "    ${YELLOW}→${RESET} Dynamic bsz:  max_token_len=16384/gpu"
 echo "    ${YELLOW}→${RESET} FSDP:         size=2, grad_ckpt=True, optim_offload=True"
-echo "    ${YELLOW}→${RESET} Save/test:    every 100 steps"
+echo "    ${YELLOW}→${RESET} Save/test:    every 2000 steps"
 echo ""
 
 echo "${CYAN}╔══════════════════════════════════════════════════════╗${RESET}"
@@ -196,7 +196,7 @@ python -m verl.trainer.main_ppo \
     trainer.nnodes=1 \
     trainer.default_local_dir=$LOG_PATH/$EXPERIMENT_NAME \
     trainer.default_hdfs_dir=null \
-    trainer.save_freq=100 \
-    trainer.test_freq=100 \
+    trainer.save_freq=2000 \
+    trainer.test_freq=2000 \
     trainer.total_training_steps=$TOTAL_TRAINING_STEPS \
     trainer.total_epochs=1 $@ 2>&1 | tee $LOG_PATH/$MODEL_ENV/grpo.log
