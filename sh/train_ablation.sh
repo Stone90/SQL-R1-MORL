@@ -1,4 +1,4 @@
-# SQL-R1-MORL Baseline Training (PC-Grad DISABLED — single-objective accuracy only)
+# SQL-R1-MORL Ablation Training (Dual-Objective, No PC-Grad)
 # Load WANDB_API_KEY from .env if present
 if [ -f .env ]; then
     export $(grep -v '^#' .env | xargs)
@@ -33,7 +33,7 @@ SYNSQL_DB_DIR=${SYNSQL_DB_DIR:-databases}
 export SYNSQL_DB_DIR
 
 # Environment Variables
-RUN_ID=3B-baseline
+RUN_ID=3B-ablation
 GPU_ENV=2xH100
 MODEL_ENV=SQL-R1-3B
 PROJECT_NAME=SQL-R1-MORL
@@ -55,7 +55,7 @@ RESET='\033[0m'
 
 echo ""
 echo "${CYAN}╔══════════════════════════════════════════════════════╗${RESET}"
-echo "${CYAN}║${RESET}  ${BOLD}SQL-R1-MORL Baseline (Single-Objective, No PC-Grad)${RESET}"
+echo "${CYAN}║${RESET}  ${BOLD}SQL-R1-MORL Ablation (Dual-Objective, No PC-Grad)${RESET}"
 echo "${CYAN}╚══════════════════════════════════════════════════════╝${RESET}"
 echo ""
 
@@ -93,7 +93,7 @@ else
 fi
 
 echo "    ${GREEN}✓${RESET} Experiment: $EXPERIMENT_NAME"
-echo "    ${GREEN}✓${RESET} Logs: $LOG_PATH/$MODEL_ENV/grpo_baseline.log"
+echo "    ${GREEN}✓${RESET} Logs: $LOG_PATH/$MODEL_ENV/grpo_ablation.log"
 echo ""
 
 # ── Show GPU info ──
@@ -141,12 +141,12 @@ fi
 
 # ── Training config summary ──
 echo "${GREEN}>>>${RESET} ${BOLD}Training Config${RESET}"
-echo "    ${YELLOW}→${RESET} Algorithm:    GRPO (baseline, NO PC-Grad)"
+echo "    ${YELLOW}→${RESET} Algorithm:    GRPO (ablation, dual-objective, NO PC-Grad)"
 echo "    ${YELLOW}→${RESET} Batch size:   16 (mini=4, micro=4)"
 echo "    ${YELLOW}→${RESET} Learning rate: 5e-7"
 echo "    ${YELLOW}→${RESET} KL loss:      low_var_kl (coef=0.01)"
 echo "    ${YELLOW}→${RESET} Entropy coef: 0.01"
-echo "    ${YELLOW}→${RESET} Max response: 1024 tokens"
+echo "    ${YELLOW}→${RESET} Max response: 2048 tokens"
 echo "    ${YELLOW}→${RESET} Cases:        $NUM_CASES → $TOTAL_TRAINING_STEPS steps"
 echo "    ${YELLOW}→${RESET} Rollout:      n=16, temp=0.7, vLLM (gpu_mem=0.85)"
 echo "    ${YELLOW}→${RESET} Dynamic bsz:  max_token_len=49152/gpu"
@@ -155,7 +155,7 @@ echo "    ${YELLOW}→${RESET} Save/test:    every 50 steps"
 echo ""
 
 echo "${CYAN}╔══════════════════════════════════════════════════════╗${RESET}"
-echo "${CYAN}║${RESET}  ${BOLD}Starting Baseline Training...${RESET}"
+echo "${CYAN}║${RESET}  ${BOLD}Starting Ablation Training...${RESET}"
 echo "${CYAN}╚══════════════════════════════════════════════════════╝${RESET}"
 echo ""
 
@@ -168,7 +168,7 @@ python -m verl.trainer.main_ppo \
     data.train_batch_size=$TRAIN_BATCH_SIZE \
     data.val_batch_size=8 \
     data.max_prompt_length=4096 \
-    data.max_response_length=1024 \
+    data.max_response_length=2048 \
     actor_rollout_ref.model.path=$MODEL_PATH \
     actor_rollout_ref.actor.optim.lr=5e-7 \
     actor_rollout_ref.model.use_remove_padding=True \
@@ -207,4 +207,4 @@ python -m verl.trainer.main_ppo \
     trainer.test_freq=50 \
     trainer.max_ckpt_to_keep=5 \
     trainer.total_training_steps=$TOTAL_TRAINING_STEPS \
-    trainer.total_epochs=1 $@ 2>&1 | tee $LOG_PATH/$MODEL_ENV/grpo_baseline.log
+    trainer.total_epochs=1 $@ 2>&1 | tee $LOG_PATH/$MODEL_ENV/grpo_ablation.log

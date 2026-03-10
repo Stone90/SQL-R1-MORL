@@ -211,3 +211,79 @@ def compute_score(solution_str: str, ground_truth: Dict):
     accuracy_reward = format_score + exec_score + result_score
 
     return accuracy_reward, efficiency_reward
+
+
+def compute_score_detailed(solution_str: str, ground_truth: Dict) -> Dict:
+    """Like compute_score() but returns a dict with component-level scores."""
+    FORMAT_REWARD = 1
+    EXEC_REWARD = 2
+    RESULT_REWARD = 3
+
+    if isinstance(ground_truth, str):
+        try:
+            ground_truth = ast.literal_eval(ground_truth)
+        except (ValueError, SyntaxError):
+            return {
+                'accuracy_reward': -1.0, 'efficiency_reward': 0.0,
+                'format_score': -0.5, 'exec_score': 0, 'match_score': 0,
+                'exec_status': 'ParseError', 'pred_sql': '', 'reasoning': '',
+            }
+
+    inner_data = ground_truth.get('ground_truth', {})
+    if isinstance(inner_data, dict):
+        db_id = inner_data.get('db_id')
+        gold_sql = inner_data.get('sql')
+    else:
+        db_id = ground_truth.get('db_id')
+        gold_sql = ground_truth.get('sql')
+
+    if not db_id or not gold_sql:
+        return {
+            'accuracy_reward': -1.0, 'efficiency_reward': 0.0,
+            'format_score': -0.5, 'exec_score': 0, 'match_score': 0,
+            'exec_status': 'MissingGT', 'pred_sql': '', 'reasoning': '',
+        }
+
+    answer_text, think_text, processed_str = extract_solution(solution_str)
+    pred_sql, format_correct = validate_response_structure(answer_text, processed_str)
+
+    format_score = FORMAT_REWARD if format_correct else -0.5
+    exec_score = 0
+    match_score = 0
+    exec_status = "Not Attempted"
+
+    db_base = os.environ.get('SYNSQL_DB_DIR', '/workspace/synsql_data/data/SynSQL-2.5M/databases')
+    db_path = os.path.join(db_base, db_id, f"{db_id}.sqlite")
+
+    if pred_sql:
+        try:
+            if not os.path.exists(db_path):
+                exec_status = 'Unexecutable'
+            else:
+                exec_status = func_timeout(10, eval_exec_match, args=(db_path, pred_sql, gold_sql, 0, False, False))
+        except Exception:
+            exec_status = 'Unexecutable'
+
+        if exec_status == 'Match':
+            exec_score, match_score = EXEC_REWARD, RESULT_REWARD
+        elif exec_status == 'Mismatch':
+            exec_score, match_score = EXEC_REWARD, -1
+        else:
+            exec_score = -1
+
+    efficiency_reward = 0.0
+    if pred_sql and os.path.exists(db_path):
+        efficiency_reward = _compute_efficiency_reward(db_path, pred_sql, gold_sql, exec_status)
+
+    accuracy_reward = format_score + exec_score + match_score
+
+    return {
+        'accuracy_reward': accuracy_reward,
+        'efficiency_reward': efficiency_reward,
+        'format_score': format_score,
+        'exec_score': exec_score,
+        'match_score': match_score,
+        'exec_status': exec_status,
+        'pred_sql': pred_sql or '',
+        'reasoning': think_text or '',
+    }
