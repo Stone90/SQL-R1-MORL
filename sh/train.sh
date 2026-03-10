@@ -145,8 +145,8 @@ echo "    ${YELLOW}→${RESET} Algorithm:    GRPO + PC-Grad (MORL)"
 echo "    ${YELLOW}→${RESET} Cases:        $NUM_CASES → $TOTAL_TRAINING_STEPS steps"
 echo "    ${YELLOW}→${RESET} Batch size:   $TRAIN_BATCH_SIZE (mini=4, micro=2)"
 echo "    ${YELLOW}→${RESET} Learning rate: 5e-7"
-echo "    ${YELLOW}→${RESET} KL loss:      low_var_kl (coef=0.01)"
-echo "    ${YELLOW}→${RESET} Entropy coef: 0.01"
+echo "    ${YELLOW}→${RESET} KL loss:      low_var_kl (coef=0.04)"
+echo "    ${YELLOW}→${RESET} Entropy coef: 0.0 (disabled)"
 echo "    ${YELLOW}→${RESET} Rollout:      n=16, temp=0.7, vLLM (gpu_mem=0.85)"
 echo "    ${YELLOW}→${RESET} Dynamic bsz:  max_token_len=24576/gpu"
 echo "    ${YELLOW}→${RESET} FSDP:         size=2, grad_ckpt=True, optim_offload=True"
@@ -176,8 +176,8 @@ python -m verl.trainer.main_ppo \
     actor_rollout_ref.actor.use_dynamic_bsz=True \
     actor_rollout_ref.actor.ppo_max_token_len_per_gpu=24576 \
     actor_rollout_ref.actor.use_kl_loss=True \
-    actor_rollout_ref.actor.kl_loss_coef=0.01 \
-    actor_rollout_ref.actor.entropy_coeff=0.01 \
+    actor_rollout_ref.actor.kl_loss_coef=0.04 \
+    actor_rollout_ref.actor.entropy_coeff=0.0 \
     actor_rollout_ref.actor.kl_loss_type=low_var_kl \
     actor_rollout_ref.actor.fsdp_config.fsdp_size=2 \
     actor_rollout_ref.model.enable_gradient_checkpointing=True \
@@ -193,7 +193,7 @@ python -m verl.trainer.main_ppo \
     actor_rollout_ref.ref.log_prob_micro_batch_size=16 \
     actor_rollout_ref.ref.fsdp_config.param_offload=False \
     actor_rollout_ref.actor.enable_pc_grad=True \
-    algorithm.kl_ctrl.kl_coef=0.01 \
+    algorithm.kl_ctrl.kl_coef=0.04 \
     trainer.critic_warmup=0 \
     trainer.logger=['wandb'] \
     trainer.project_name=$PROJECT_NAME \
