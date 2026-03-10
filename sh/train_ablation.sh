@@ -173,9 +173,9 @@ python -m verl.trainer.main_ppo \
     actor_rollout_ref.actor.optim.lr=5e-7 \
     actor_rollout_ref.model.use_remove_padding=True \
     actor_rollout_ref.actor.ppo_mini_batch_size=4 \
-    actor_rollout_ref.actor.ppo_micro_batch_size=4 \
+    actor_rollout_ref.actor.ppo_micro_batch_size=2 \
     actor_rollout_ref.actor.use_dynamic_bsz=True \
-    actor_rollout_ref.actor.ppo_max_token_len_per_gpu=49152 \
+    actor_rollout_ref.actor.ppo_max_token_len_per_gpu=24576 \
     actor_rollout_ref.actor.use_kl_loss=True \
     actor_rollout_ref.actor.kl_loss_coef=0.01 \
     actor_rollout_ref.actor.entropy_coeff=0.01 \
