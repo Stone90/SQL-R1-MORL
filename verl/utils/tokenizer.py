@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 """Utils for tokenization."""
+import os
 import warnings
 
 __all__ = ['hf_tokenizer']
@@ -52,6 +53,17 @@ def hf_tokenizer(name_or_path, correct_pad_token=True, correct_gemma2=True, **kw
         warnings.warn('Found gemma-2-2b-it tokenizer. Set eos_token and eos_token_id to <end_of_turn> and 107.')
         kwargs['eos_token'] = '<end_of_turn>'
         kwargs['eos_token_id'] = 107
+    if isinstance(name_or_path, str) and os.path.isdir(name_or_path):
+        has_fast = os.path.exists(os.path.join(name_or_path, "tokenizer.json"))
+        has_slow = os.path.exists(os.path.join(name_or_path, "vocab.json"))
+        if not has_fast and not has_slow:
+            raise FileNotFoundError(
+                f"Model directory {name_or_path} is missing tokenizer files "
+                f"(neither tokenizer.json nor vocab.json found). "
+                f"Re-run setup_data.sh to fix the download."
+            )
+        if has_fast:
+            kwargs.setdefault('use_fast', True)
     tokenizer = AutoTokenizer.from_pretrained(name_or_path, **kwargs)
     if correct_pad_token:
         set_pad_token_id(tokenizer)

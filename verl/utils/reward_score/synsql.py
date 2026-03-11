@@ -63,11 +63,13 @@ def _explain_plan_cost(cursor, sql: str) -> Optional[float]:
 
     Lower cost = more efficient plan. Returns None if the query fails to explain.
 
-    Scoring:
-        - SCAN TABLE (full table scan): 10 points each
-        - USE TEMP B-TREE (temp sorting/grouping): 5 points each
-        - SEARCH TABLE USING INDEX (index lookup): 1 point each
-        - Other operations: 0 points
+    Scoring (per row, multiplied by depth factor 1 + 0.1*selectid):
+        - SCAN TABLE (full table scan): 10 points
+        - SEARCH TABLE/SUBQUERY with COVERING INDEX: 0.5 points
+        - SEARCH TABLE/SUBQUERY with regular index: 1 point
+        - USE TEMP B-TREE (temp sorting/grouping): 5 points
+        - CORRELATED/COMPOUND SUBQUERY: 8 points
+        - SCALAR SUBQUERY: 3 points
     """
     try:
         cursor.execute(f"EXPLAIN QUERY PLAN {sql}")
@@ -78,12 +80,28 @@ def _explain_plan_cost(cursor, sql: str) -> Optional[float]:
     cost = 0.0
     for row in rows:
         detail = str(row[-1]).upper() if row else ""
+        try:
+            depth = int(row[0]) if row else 0
+        except (ValueError, TypeError, IndexError):
+            depth = 0
+        depth_mult = 1.0 + 0.1 * depth
+
+        row_cost = 0.0
         if "SCAN TABLE" in detail:
-            cost += 10.0
+            row_cost += 10.0
         elif "SEARCH TABLE" in detail or "SEARCH SUBQUERY" in detail:
-            cost += 1.0
+            if "COVERING INDEX" in detail:
+                row_cost += 0.5
+            else:
+                row_cost += 1.0
         if "USE TEMP B-TREE" in detail:
-            cost += 5.0
+            row_cost += 5.0
+        if "CORRELATED" in detail:
+            row_cost += 8.0
+        if "SCALAR SUBQUERY" in detail:
+            row_cost += 3.0
+
+        cost += row_cost * depth_mult
     return cost
 
 
@@ -111,12 +129,16 @@ def _compute_efficiency_reward(db_path: str, pred_sql: str, gold_sql: str, exec_
     if pred_cost is None or gold_cost is None:
         return 0.0
 
-    # Pred is at least as efficient as gold
-    if pred_cost <= gold_cost:
+    if gold_cost == 0 and pred_cost == 0:
         reward = 1.0
+    elif gold_cost == 0:
+        reward = 0.5
+    elif pred_cost == 0:
+        reward = min(gold_cost / 1e-6, 2.0)  # effectively 2.0
+    elif pred_cost <= gold_cost:
+        reward = min(gold_cost / pred_cost, 2.0)  # bonus for beating gold
     else:
-        # Penalize proportionally: reward = gold_cost / pred_cost
-        reward = gold_cost / pred_cost if pred_cost > 0 else 0.0
+        reward = gold_cost / pred_cost  # penalty, < 1.0
 
     # Half credit for Mismatch (executable but wrong result)
     if exec_status == 'Mismatch':
@@ -189,3 +211,79 @@ def compute_score(solution_str: str, ground_truth: Dict):
     accuracy_reward = format_score + exec_score + result_score
 
     return accuracy_reward, efficiency_reward
+
+
+def compute_score_detailed(solution_str: str, ground_truth: Dict) -> Dict:
+    """Like compute_score() but returns a dict with component-level scores."""
+    FORMAT_REWARD = 1
+    EXEC_REWARD = 2
+    RESULT_REWARD = 3
+
+    if isinstance(ground_truth, str):
+        try:
+            ground_truth = ast.literal_eval(ground_truth)
+        except (ValueError, SyntaxError):
+            return {
+                'accuracy_reward': -1.0, 'efficiency_reward': 0.0,
+                'format_score': -0.5, 'exec_score': 0, 'match_score': 0,
+                'exec_status': 'ParseError', 'pred_sql': '', 'reasoning': '',
+            }
+
+    inner_data = ground_truth.get('ground_truth', {})
+    if isinstance(inner_data, dict):
+        db_id = inner_data.get('db_id')
+        gold_sql = inner_data.get('sql')
+    else:
+        db_id = ground_truth.get('db_id')
+        gold_sql = ground_truth.get('sql')
+
+    if not db_id or not gold_sql:
+        return {
+            'accuracy_reward': -1.0, 'efficiency_reward': 0.0,
+            'format_score': -0.5, 'exec_score': 0, 'match_score': 0,
+            'exec_status': 'MissingGT', 'pred_sql': '', 'reasoning': '',
+        }
+
+    answer_text, think_text, processed_str = extract_solution(solution_str)
+    pred_sql, format_correct = validate_response_structure(answer_text, processed_str)
+
+    format_score = FORMAT_REWARD if format_correct else -0.5
+    exec_score = 0
+    match_score = 0
+    exec_status = "Not Attempted"
+
+    db_base = os.environ.get('SYNSQL_DB_DIR', '/workspace/synsql_data/data/SynSQL-2.5M/databases')
+    db_path = os.path.join(db_base, db_id, f"{db_id}.sqlite")
+
+    if pred_sql:
+        try:
+            if not os.path.exists(db_path):
+                exec_status = 'Unexecutable'
+            else:
+                exec_status = func_timeout(10, eval_exec_match, args=(db_path, pred_sql, gold_sql, 0, False, False))
+        except Exception:
+            exec_status = 'Unexecutable'
+
+        if exec_status == 'Match':
+            exec_score, match_score = EXEC_REWARD, RESULT_REWARD
+        elif exec_status == 'Mismatch':
+            exec_score, match_score = EXEC_REWARD, -1
+        else:
+            exec_score = -1
+
+    efficiency_reward = 0.0
+    if pred_sql and os.path.exists(db_path):
+        efficiency_reward = _compute_efficiency_reward(db_path, pred_sql, gold_sql, exec_status)
+
+    accuracy_reward = format_score + exec_score + match_score
+
+    return {
+        'accuracy_reward': accuracy_reward,
+        'efficiency_reward': efficiency_reward,
+        'format_score': format_score,
+        'exec_score': exec_score,
+        'match_score': match_score,
+        'exec_status': exec_status,
+        'pred_sql': pred_sql or '',
+        'reasoning': think_text or '',
+    }

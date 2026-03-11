@@ -30,11 +30,23 @@ info()   { echo "    ${YELLOW}→${RESET} $1"; }
 ok()     { echo "    ${GREEN}✓${RESET} $1"; }
 fail()   { echo "    ${RED}✗${RESET} $1"; }
 
+BUNDLED_DIR="$PROJ_DIR/dataset"
+USING_BUNDLED=false
+
+# Detect bundled dataset (self-contained dataset with SQLite DBs)
+if [ -f "$BUNDLED_DIR/train.parquet" ] && [ -f "$BUNDLED_DIR/test.parquet" ] && \
+   [ -n "$(find "$BUNDLED_DIR/databases" -name '*.sqlite' 2>/dev/null | head -1)" ]; then
+    USING_BUNDLED=true
+fi
+
 banner "SQL-R1-MORL Setup"
 info "Project dir: $PROJ_DIR"
 info "Model dir:   $MODEL_DIR"
 info "Data dir:    $DATA_DIR"
 info "DB dir:      $DB_DIR"
+if [ "$USING_BUNDLED" = true ]; then
+    info "Mode:        ${GREEN}BUNDLED${RESET} (using dataset/ — no HF downloads needed)"
+fi
 
 # ── 1. Model: SQL-R1-3B (cold-start with SQL-tuned model) ──
 MODEL_NAME="SQL-R1-3B"
@@ -49,11 +61,43 @@ else
     step "Downloading $MODEL_NAME from HuggingFace (~6 GB)..."
     info "This may take 5-15 minutes depending on connection speed"
     mkdir -p "$MODEL_DIR"
-    export HF_HUB_ENABLE_HF_TRANSFER=1
-    hf download "MPX0222forHF/$MODEL_NAME" --local-dir "$MODEL_PATH" \
-        --exclude "*.pt" --exclude "*.bin"
+    # Use hf_transfer for speed if available, otherwise fall back to default
+    python -c "import hf_transfer" 2>/dev/null && export HF_HUB_ENABLE_HF_TRANSFER=1 || export HF_HUB_ENABLE_HF_TRANSFER=0
+    MAX_RETRIES=3
+    for attempt in $(seq 1 $MAX_RETRIES); do
+        if hf download "MPX0222forHF/$MODEL_NAME" --local-dir "$MODEL_PATH" \
+            --exclude "*.pt" --exclude "*.bin"; then
+            break
+        fi
+        if [ "$attempt" -eq "$MAX_RETRIES" ]; then
+            fail "Model download failed after $MAX_RETRIES attempts"
+            exit 1
+        fi
+        info "Download interrupted — retrying ($attempt/$MAX_RETRIES)..."
+    done
+    # Verify at least one safetensor shard was actually downloaded
+    if [ -z "$(ls "$MODEL_PATH"/*.safetensors 2>/dev/null)" ]; then
+        fail "Model download incomplete — no .safetensors files found in $MODEL_PATH"
+        exit 1
+    fi
+    if [ ! -f "$MODEL_PATH/tokenizer_config.json" ]; then
+        fail "Model download incomplete — tokenizer_config.json missing from $MODEL_PATH"
+        exit 1
+    fi
     ok "Model downloaded to $MODEL_PATH"
     info "Files: $(ls "$MODEL_PATH"/*.safetensors 2>/dev/null | wc -l) safetensor shards"
+fi
+
+# Validate tokenizer files exist (catches incomplete prior downloads)
+if [ ! -f "$MODEL_PATH/tokenizer.json" ] && [ ! -f "$MODEL_PATH/vocab.json" ]; then
+    fail "Model incomplete — no tokenizer files found. Re-downloading..."
+    hf download "MPX0222forHF/$MODEL_NAME" --local-dir "$MODEL_PATH" \
+        --exclude "*.pt" --exclude "*.bin"
+    if [ ! -f "$MODEL_PATH/tokenizer.json" ] && [ ! -f "$MODEL_PATH/vocab.json" ]; then
+        fail "Re-download failed — still no tokenizer files in $MODEL_PATH"
+        exit 1
+    fi
+    ok "Re-download fixed missing tokenizer files"
 fi
 
 # ── 2. Training data: SynSQL-2.5M (parquet) ──
@@ -62,11 +106,13 @@ TEST_FILE="$DATA_DIR/test.parquet"
 
 banner "Step 2/5: Download Training Data"
 
-TRAIN_SIZE=$(stat -c%s "$TRAIN_FILE" 2>/dev/null || echo 0)
-TEST_SIZE=$(stat -c%s "$TEST_FILE" 2>/dev/null || echo 0)
-# Real files are ~15M and ~3.7M; empty parquets with just schema are a few KB
-if [ "$TRAIN_SIZE" -gt 100000 ] && [ "$TEST_SIZE" -gt 100000 ]; then
-    ok "Training data already exists at $DATA_DIR — skipping download"
+if [ "$USING_BUNDLED" = true ]; then
+    # Always copy from bundled source (ensures data/ stays in sync after git pull)
+    step "Copying bundled training data from dataset/..."
+    mkdir -p "$DATA_DIR"
+    cp "$BUNDLED_DIR/train.parquet" "$TRAIN_FILE"
+    cp "$BUNDLED_DIR/test.parquet" "$TEST_FILE"
+    ok "Copied bundled data to $DATA_DIR"
     info "train.parquet: $(du -h "$TRAIN_FILE" | cut -f1)"
     info "test.parquet:  $(du -h "$TEST_FILE" | cut -f1)"
 else
@@ -98,6 +144,15 @@ DB_COUNT=$(find "$DB_DIR" -name "*.sqlite" 2>/dev/null | head -1)
 if [ -n "$DB_COUNT" ]; then
     ok "Databases already exist at $DB_DIR — skipping download"
     info "Database count: $(find "$DB_DIR" -name "*.sqlite" | wc -l) databases"
+elif [ "$USING_BUNDLED" = true ]; then
+    step "Symlinking bundled databases from dataset/databases/..."
+    mkdir -p "$DB_DIR"
+    for db in "$BUNDLED_DIR/databases"/*/; do
+        db_name=$(basename "$db")
+        ln -sfn "$(cd "$db" && pwd)" "$DB_DIR/$db_name"
+    done
+    ok "Symlinked bundled databases into $DB_DIR"
+    info "Database count: $(find -L "$DB_DIR" -name "*.sqlite" | wc -l) databases"
 else
     step "Downloading SynSQL SQLite databases from HuggingFace (OmniSQL-datasets)..."
     info "These are needed for execution-based reward (EXPLAIN QUERY PLAN)"
@@ -133,10 +188,18 @@ else
 fi
 
 export SYNSQL_DB_DIR="$DB_DIR"
+# Persist to .env so train scripts pick it up
+if ! grep -q 'SYNSQL_DB_DIR' "$PROJ_DIR/.env" 2>/dev/null; then
+    echo "SYNSQL_DB_DIR=$DB_DIR" >> "$PROJ_DIR/.env"
+fi
 ok "SYNSQL_DB_DIR=$DB_DIR"
 
 # ── 4. Data cleaning: validate gold SQL runs against databases ──
 banner "Step 4/5: Validate Data Integrity"
+
+if [ "$USING_BUNDLED" = true ]; then
+    ok "Skipped — bundled dataset is pre-validated"
+else
 step "Checking that every gold SQL query executes against its database..."
 info "This ensures no bad samples corrupt training rewards"
 
@@ -240,9 +303,14 @@ for split in ['train', 'test']:
     else:
         print(f"    {GREEN}✓{RESET} [{BOLD}{split}{RESET}] All {orig_len:,} samples valid ({elapsed:.1f}s)")
 PYEOF
+fi  # end USING_BUNDLED guard for step 4
 
 # ── 5. Curriculum sorting: order training data by proxy complexity ──
 banner "Step 5/5: Curriculum Sort (Easy → Hard)"
+
+if [ "$USING_BUNDLED" = true ]; then
+    ok "Skipped — bundled dataset is pre-sorted by complexity"
+else
 step "Sorting training data by proxy complexity (JOINs + subqueries + SQL length)..."
 
 python3 - "$DATA_DIR" <<'PYEOF'
@@ -276,6 +344,7 @@ for label, idx in [('Easiest', 0), ('Hardest', len(df)-1)]:
     subq = sql.upper().count('SELECT') - 1
     print(f"    {YELLOW}→{RESET} {label}: {len(sql)} chars, {joins} JOINs, {subq} subqueries")
 PYEOF
+fi  # end USING_BUNDLED guard for step 5
 
 # ── Summary ──
 banner "Setup Complete"

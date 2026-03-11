@@ -10,6 +10,8 @@ wandb/
 openr1_ckpts/
 *.wandb
 *.out
+report*.md
+reports/
 
 core
 test_all.ipynb

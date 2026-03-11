@@ -41,11 +41,11 @@ if __name__ == '__main__':
     parser.add_argument("--table_value_cache_path", type = str)
     parser.add_argument("--table_info_cache_path", type = str)
     parser.add_argument("--think_mode", type = bool, default=False)
+    parser.add_argument("--input_format", type = str, default="json", choices=["json", "parquet"])
 
     opt = parser.parse_args()
     print(opt)
 
-    input_dataset = json.load(open(opt.input_file))
     tokenizer = AutoTokenizer.from_pretrained(opt.nl2sql_ckpt_path, trust_remote_code=True, local_files_only=True)
     
     if "Qwen2.5-" in opt.nl2sql_ckpt_path:
@@ -109,20 +109,39 @@ if __name__ == '__main__':
         trust_remote_code = True
     )
     
-    if "Qwen3-" in opt.nl2sql_ckpt_path:
-        chat_prompts = [tokenizer.apply_chat_template(
-            [{"role": "user", "content": get_input_seq(
-                data, opt.database_path, opt.dataset_name, opt.table_value_cache_path, opt.table_info_cache_path
-                )}],
-            add_generation_prompt = True, tokenize = False
-        ) for data in input_dataset]
+    if opt.input_format == "parquet":
+        import pandas as pd
+        df = pd.read_parquet(opt.input_file)
+        input_dataset = df.to_dict('records')
+        chat_prompts = []
+        for row in input_dataset:
+            prompt = row['prompt']
+            if hasattr(prompt, 'tolist'):
+                prompt = prompt.tolist()  # numpy array → list of dicts
+            chat_prompts.append(tokenizer.apply_chat_template(
+                prompt, add_generation_prompt=True, tokenize=False
+            ))
+        # Extract gold SQL into each row for output
+        for row in input_dataset:
+            rm = row.get('reward_model')
+            if isinstance(rm, dict):
+                row['gold_sql'] = rm.get('ground_truth', {}).get('sql', '')
     else:
-        chat_prompts = [tokenizer.apply_chat_template(
-            [{"role": "user", "content": get_input_seq(
-                data, opt.database_path, opt.dataset_name, opt.table_value_cache_path, opt.table_info_cache_path
-                )}],
-            add_generation_prompt = True, tokenize = False, enable_thinking=opt.think_mode
-        ) for data in input_dataset]
+        input_dataset = json.load(open(opt.input_file))
+        if "Qwen3-" in opt.nl2sql_ckpt_path:
+            chat_prompts = [tokenizer.apply_chat_template(
+                [{"role": "user", "content": get_input_seq(
+                    data, opt.database_path, opt.dataset_name, opt.table_value_cache_path, opt.table_info_cache_path
+                    )}],
+                add_generation_prompt = True, tokenize = False
+            ) for data in input_dataset]
+        else:
+            chat_prompts = [tokenizer.apply_chat_template(
+                [{"role": "user", "content": get_input_seq(
+                    data, opt.database_path, opt.dataset_name, opt.table_value_cache_path, opt.table_info_cache_path
+                    )}],
+                add_generation_prompt = True, tokenize = False, enable_thinking=opt.think_mode
+            ) for data in input_dataset]
 
     outputs = llm.generate(chat_prompts, sampling_params)
     
@@ -138,8 +157,14 @@ if __name__ == '__main__':
             data["pred_sqls"] = sqls
             results.append(data)
 
+        class _NumpyEncoder(json.JSONEncoder):
+            def default(self, obj):
+                if hasattr(obj, 'tolist'):
+                    return obj.tolist()
+                return super().default(obj)
+
         with open(opt.output_file, "w", encoding = "utf-8") as f:
-            f.write(json.dumps(results, indent = 2, ensure_ascii = False))
+            f.write(json.dumps(results, indent = 2, ensure_ascii = False, cls=_NumpyEncoder))
             
     elif opt.output_format == "txt":
         for data, output in zip(input_dataset, outputs):

@@ -152,12 +152,22 @@ def compute_advantage(data: DataProto, adv_estimator, gamma=1.0, lam=1.0, num_re
             data.meta_info['accuracy_reward_raw_mean'] = torch.mean(acc_raw).item()
             data.meta_info['efficiency_reward_raw_mean'] = torch.mean(eff_raw).item()
 
-            for key in ['accuracy_rewards', 'efficiency_rewards']:
-                obj_adv, _ = core_algos.compute_grpo_outcome_advantage(
-                    token_level_rewards=data.batch[key],
-                    eos_mask=response_mask,
-                    index=index)
-                data.batch[key] = obj_adv
+            # Accuracy: standard GRPO within-group normalization
+            acc_adv, _ = core_algos.compute_grpo_outcome_advantage(
+                token_level_rewards=data.batch['accuracy_rewards'],
+                eos_mask=response_mask,
+                index=index)
+            data.batch['accuracy_rewards'] = acc_adv
+
+            # Efficiency: batch-level mean-centering (preserves signal with low within-group variance)
+            eff_adv, _ = core_algos.compute_batch_centered_advantage(
+                token_level_rewards=data.batch['efficiency_rewards'],
+                eos_mask=response_mask)
+            data.batch['efficiency_rewards'] = eff_adv
+
+            eff_adv_scalar = (data.batch['efficiency_rewards'] * (data.batch['efficiency_rewards'] != 0)).sum(dim=-1)
+            data.meta_info['efficiency_advantage_std'] = torch.std(eff_adv_scalar).item()
+            data.meta_info['efficiency_advantage_nonzero_frac'] = (eff_adv_scalar != 0).float().mean().item()
 
     elif adv_estimator == 'reinforce_plus_plus':
         token_level_rewards = data.batch['token_level_rewards']
@@ -330,6 +340,10 @@ def compute_reward_metrics(batch):
         reward_metrics["reward/accuracy_advantage_mean"] = torch.mean(acc_adv).detach().item()
         reward_metrics["reward/efficiency_advantage_mean"] = torch.mean(eff_adv).detach().item()
 
+    if 'efficiency_advantage_std' in batch.meta_info:
+        reward_metrics["reward/efficiency_advantage_std"] = batch.meta_info['efficiency_advantage_std']
+        reward_metrics["reward/efficiency_advantage_nonzero_frac"] = batch.meta_info['efficiency_advantage_nonzero_frac']
+
     return reward_metrics
 
 
@@ -442,8 +456,13 @@ class RayPPOTrainer(object):
             self.config.critic.optim.total_training_steps = total_training_steps
 
     def _validate(self):
+        import json
+        import ast
+        from verl.utils.reward_score.synsql import compute_score_detailed, extract_solution
+
         reward_tensor_lst = []
         data_source_lst = []
+        val_predictions = []
         for test_data in self.val_dataloader:
             test_batch = DataProto.from_single_dict(test_data)
             # test_batch = test_batch.to('cuda')
@@ -474,8 +493,55 @@ class RayPPOTrainer(object):
             # for certain reward function (e.g. sandbox), the generation can overlap with reward
             reward_tensor = self.val_reward_fn(test_batch)
 
+            # Collect per-sample detailed predictions
+            for i in range(len(test_batch)):
+                item = test_batch[i]
+                prompt_ids = item.batch['prompts']
+                prompt_length = prompt_ids.shape[-1]
+                response_ids = item.batch['responses']
+                attention_mask = item.batch['attention_mask']
+                valid_response_length = int(attention_mask[prompt_length:].sum().item())
+                valid_prompt_length = int(attention_mask[:prompt_length].sum().item())
+                valid_response_ids = response_ids[:valid_response_length]
+
+                response_str = self.tokenizer.decode(valid_response_ids, skip_special_tokens=False)
+
+                # Get ground truth
+                gt = item.non_tensor_batch['reward_model']
+                if isinstance(gt, str):
+                    gt = ast.literal_eval(gt)
+                inner = gt.get('ground_truth', gt) if isinstance(gt, dict) else {}
+
+                # Full solution string for compute_score_detailed
+                full_prompt_ids = prompt_ids[-valid_prompt_length:]
+                full_ids = torch.cat((full_prompt_ids, valid_response_ids))
+                full_str = self.tokenizer.decode(full_ids, skip_special_tokens=False)
+
+                detailed = compute_score_detailed(full_str, gt)
+
+                val_predictions.append({
+                    'db_id': inner.get('db_id', '') if isinstance(inner, dict) else '',
+                    'gold_sql': inner.get('sql', '') if isinstance(inner, dict) else '',
+                    'pred_sql': detailed['pred_sql'],
+                    'reasoning': detailed['reasoning'][:500],
+                    'format_score': detailed['format_score'],
+                    'exec_score': detailed['exec_score'],
+                    'match_score': detailed['match_score'],
+                    'exec_status': detailed['exec_status'],
+                    'accuracy_reward': detailed['accuracy_reward'],
+                    'efficiency_reward': detailed['efficiency_reward'],
+                    'response_length': valid_response_length,
+                })
+
             reward_tensor_lst.append(reward_tensor)
             data_source_lst.append(test_batch.non_tensor_batch.get('data_source', ['unknown'] * reward_tensor.shape[0]))
+
+        # Save predictions JSON
+        val_dir = os.path.join(self.config.trainer.default_local_dir, 'val_predictions')
+        os.makedirs(val_dir, exist_ok=True)
+        with open(os.path.join(val_dir, f'step_{self.global_steps}.json'), 'w') as f:
+            json.dump(val_predictions, f, indent=2)
+        print(f'[validation] Saved {len(val_predictions)} predictions to {val_dir}/step_{self.global_steps}.json')
 
         reward_tensor = torch.cat(reward_tensor_lst, dim=0).sum(-1).cpu()  # (batch_size,)
         data_sources = np.concatenate(data_source_lst, axis=0)
@@ -494,6 +560,16 @@ class RayPPOTrainer(object):
             count_correct = sum(1 for reward in rewards if reward >= 5.5)
             total_count = len(rewards)
             metric_dict[f'val/test_score/{data_source}'] = count_correct / total_count if total_count > 0 else 0
+
+        # Component-level metrics from detailed predictions
+        if val_predictions:
+            n = len(val_predictions)
+            metric_dict['val/format_accuracy'] = sum(1 for p in val_predictions if p['format_score'] > 0) / n
+            metric_dict['val/exec_accuracy'] = sum(1 for p in val_predictions if p['exec_score'] > 0) / n
+            metric_dict['val/match_accuracy'] = sum(1 for p in val_predictions if p['match_score'] > 0) / n
+            metric_dict['val/mean_response_length'] = sum(p['response_length'] for p in val_predictions) / n
+            metric_dict['val/mean_accuracy_reward'] = sum(p['accuracy_reward'] for p in val_predictions) / n
+            metric_dict['val/mean_efficiency_reward'] = sum(p['efficiency_reward'] for p in val_predictions) / n
 
         return metric_dict
 
@@ -584,6 +660,35 @@ class RayPPOTrainer(object):
             critic_remote_path = None if self.config.trainer.default_hdfs_dir is None else os.path.join(
                 self.config.trainer.default_hdfs_dir, 'critic')
             self.critic_wg.save_checkpoint(critic_local_path, critic_remote_path)
+
+        # Prune old checkpoints if max_ckpt_to_keep is set
+        max_keep = self.config.trainer.get('max_ckpt_to_keep', -1)
+        if max_keep > 0:
+            self._prune_checkpoints('actor', max_keep)
+            if self.use_critic:
+                self._prune_checkpoints('critic', max_keep)
+
+    def _prune_checkpoints(self, role, max_keep):
+        """Remove oldest checkpoints, keeping only the latest `max_keep`."""
+        import shutil
+        ckpt_dir = os.path.join(self.config.trainer.default_local_dir, role)
+        if not os.path.isdir(ckpt_dir):
+            return
+        # Find step directories: global_step_<N>
+        step_dirs = []
+        for d in os.listdir(ckpt_dir):
+            if d.startswith('global_step_'):
+                try:
+                    step_num = int(d.split('_')[-1])
+                    step_dirs.append((step_num, os.path.join(ckpt_dir, d)))
+                except ValueError:
+                    pass
+        step_dirs.sort(key=lambda x: x[0])
+        # Remove oldest, keep latest max_keep
+        to_remove = step_dirs[:-max_keep] if len(step_dirs) > max_keep else []
+        for step_num, path in to_remove:
+            print(f"[checkpoint] Pruning old {role} checkpoint: global_step_{step_num}")
+            shutil.rmtree(path, ignore_errors=True)
 
     def _balance_batch(self, batch: DataProto, metrics, logging_prefix='global_seqlen'):
         """Reorder the data on single controller such that each dp rank gets similar total tokens"""
@@ -736,6 +841,12 @@ class RayPPOTrainer(object):
                 # collect metrics
                 metrics.update(compute_data_metrics(batch=batch, use_critic=self.use_critic))
                 metrics.update(compute_timing_metrics(batch=batch, timing_raw=timing_raw))
+
+                # GPU VRAM usage
+                if torch.cuda.is_available():
+                    metrics['gpu/vram_allocated_gb'] = torch.cuda.max_memory_allocated() / (1024 ** 3)
+                    metrics['gpu/vram_reserved_gb'] = torch.cuda.max_memory_reserved() / (1024 ** 3)
+                    torch.cuda.reset_peak_memory_stats()
 
                 # TODO: make a canonical logger that supports various backend
                 logger.log(data=metrics, step=self.global_steps)
